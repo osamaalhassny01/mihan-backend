@@ -20,6 +20,11 @@ class Service extends Model
             ORDER BY relevance DESC, c.name_ar, s.name_ar",
             ['exact'=>$keyword,'exact2'=>$keyword,'start'=>$keyword.'%','start2'=>$keyword.'%','cat'=>$like,'cat2'=>$like,'q'=>$like,'q2'=>$like,'q3'=>$like,'q4'=>$like,'q5'=>$like]);
     }
+    public function allActive(): array
+    {
+        return $this->withCategory();
+    }
+
     public function withCategory(): array
     {
         return $this->query("SELECT s.*, c.name_ar as category_name_ar, c.name_en as category_name_en, c.icon as category_icon

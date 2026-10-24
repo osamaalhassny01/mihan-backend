@@ -719,12 +719,13 @@ class ApiController extends Controller
             $this->error('يرجى تحديد سعر نهائي صحيح للخدمة', 422);
         }
 
-        if ($reqModel->completeWithInvoice((int)$id, (int)$user['id'], $finalPrice)) {
+        $result = $reqModel->completeWithInvoice((int)$id, $pId, $finalPrice, (int)$user['id']);
+        if ($result['ok'] ?? false) {
             (new Notification())->notify((int)$request['customer_id'], 'اكتمال الخدمة وإصدار الفاتورة', "اكتمل تنفيذ طلبك رقم {$request['request_number']}. يرجى سداد الفاتورة وتقييم الخدمة.", "/customer/requests/{$id}");
             ActivityLog::log((int)$user['id'], 'complete_request', "إكمال الطلب #{$id} بسعر {$finalPrice}");
             $this->json(null, 200, 'تم إكمال الطلب بنجاح وإصدار الفاتورة للعميل');
         } else {
-            $this->error('تعذر إكمال الطلب في حالته الحالية', 422);
+            $this->error($result['error'] ?? 'تعذر إكمال الطلب في حالته الحالية', 422);
         }
     }
 
