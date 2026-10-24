@@ -1,0 +1,7 @@
+.git
+.gitignore
+.env
+tests
+graphify-out
+*.log
+docker/

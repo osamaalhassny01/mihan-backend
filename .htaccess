@@ -1,0 +1,17 @@
+RewriteEngine On
+
+# Deny direct access to sensitive folders
+RewriteRule ^(app|config|database|storage|tests|lang|graphify-out)/ - [F,L]
+
+# Route everything else through index.php unless the file/dir exists
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^ index.php [QSA,L]
+
+# Disable directory listing.
+Options -Indexes
+
+# Never expose environment, configuration, documentation, or database files.
+<FilesMatch "^(\.env|.*\.(?:sql|log|ini|bak|backup|dist|md|txt|json|sh|lock))$">
+    Require all denied
+</FilesMatch>

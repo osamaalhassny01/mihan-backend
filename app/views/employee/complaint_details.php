@@ -1,0 +1,7 @@
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div class="d-flex align-items-center gap-2">
+    <h3 class="mb-0"><?= e($complaint['complaint_number']) ?></h3>
+    <?= statusBadge($complaint['status']) ?>
+  </div>
+  <?php renderBackButton('/employee/complaints', 'العودة للشكاوى'); ?>
+</div><div class="card p-4 mb-3"><h5><?= e($complaint['subject']) ?></h5><p><?= nl2br(e($complaint['description'])) ?></p></div><div class="card p-4 mb-3"><h5>المراسلات</h5><?php foreach($messages as $m): ?><div class="border-bottom py-2"><div class="small text-muted"><?= e($m['sender_name']) ?> · <?= e($m['created_at']) ?></div><div><?= nl2br(e($m['message'])) ?></div></div><?php endforeach; ?></div><div class="card p-4"><form method="post" action="<?= url('/employee/complaints/'.$complaint['id'].'/reply') ?>"><?= csrf_field() ?><textarea name="message" class="form-control mb-2" rows="4" required></textarea><button class="btn btn-primary">إرسال رد</button></form><form method="post" action="<?= url('/employee/complaints/'.$complaint['id'].'/status') ?>" class="mt-3 d-flex gap-2"><?= csrf_field() ?><select class="form-select" name="status"><option value="open">مفتوحة</option><option value="in_review">قيد المراجعة</option><option value="resolved">تم الحل</option><option value="rejected">مرفوضة</option><option value="closed">مغلقة</option></select><button class="btn btn-outline-primary">تحديث الحالة</button></form></div>

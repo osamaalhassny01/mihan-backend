@@ -1,0 +1,26 @@
+-- MIHAN Admin Settings Center
+INSERT INTO system_settings (`key`,`value`) VALUES
+('platform_commission_rate','0.10'),
+('site_name','مِهَن'),
+('site_tagline','منصة الخدمات المهنية'),
+('default_language','ar'),
+('timezone','Asia/Aden'),
+('allow_customer_registration','1'),
+('allow_provider_registration','1'),
+('maintenance_mode','0'),
+('maintenance_message','المنصة تحت الصيانة المؤقتة، نعود إليكم قريبًا.'),
+('auto_provider_available','1'),
+('reviews_enabled','1'),
+('complaints_enabled','1'),
+('notify_on_request','1'),
+('currency','ريال يمني'),
+('currency_code','YER'),
+('invoice_prefix','INV'),
+('notifications_enabled','1'),
+('notify_on_completion','1'),
+('notify_on_payment','1'),
+('notify_on_complaint','1'),
+('force_https','0'),
+('activity_log_enabled','1'),
+('show_system_errors','0')
+ON DUPLICATE KEY UPDATE value=VALUES(value);

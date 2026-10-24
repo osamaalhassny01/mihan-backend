@@ -1,0 +1,12 @@
+MIHAN AI page fix
+
+Root cause:
+OpenAICompatibleProvider.php is located in app/services/AI/providers/ but two files attempted to load it from app/services/AI/.
+
+Fixed files:
+- app/services/AI/AIServiceFactory.php
+- app/controllers/AdminAIController.php
+
+The require path now points to providers/OpenAICompatibleProvider.php.
+
+OpenAIProvider.php and GroqProvider.php already load it from their own providers directory correctly.

@@ -1,0 +1,7 @@
+# Defense in depth: even though uploaded files are validated by extension +
+# real MIME type before saving, explicitly refuse to execute any script
+# type from inside the uploads directory.
+<FilesMatch "\.(php|php3|php4|php5|phtml|pl|py|cgi|sh|exe)$">
+    Require all denied
+</FilesMatch>
+php_flag engine off

@@ -1,0 +1,4 @@
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h3 class="mb-0">محادثات طلبات الخدمة</h3>
+  <?php renderBackButton('/employee/dashboard', 'العودة للوحة التحكم'); ?>
+</div><div class="table-responsive"><table class="table table-hover bg-white"><thead><tr><th>الطلب</th><th>العميل</th><th>مقدم الخدمة</th><th>الحالة</th><th>آخر رسالة</th><th></th></tr></thead><tbody><?php foreach($conversations as $c): ?><tr><td><?= e($c['request_number']) ?></td><td><?= e($c['customer_name']) ?></td><td><?= e($c['provider_name']) ?></td><td><?= statusBadge($c['request_status']) ?></td><td><?= e($c['last_message_at']??'—') ?></td><td><a class="btn btn-sm btn-outline-info" href="<?= url('/employee/conversations/'.$c['request_id']) ?>">عرض</a></td></tr><?php endforeach; ?></tbody></table></div>

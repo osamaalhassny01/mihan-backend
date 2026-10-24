@@ -1,0 +1,7 @@
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div class="d-flex align-items-center gap-2">
+    <h3 class="mb-0"><?= e($request['request_number']) ?></h3>
+    <?= statusBadge($request['status']) ?>
+  </div>
+  <?php renderBackButton('/employee/requests', 'العودة للطلبات'); ?>
+</div><div class="row g-3"><div class="col-lg-7"><div class="card p-4"><p><strong>العميل:</strong> <?= e($request['customer_name']) ?></p><p><strong>مقدم الخدمة:</strong> <?= e($request['provider_name']??'غير محدد') ?></p><p><strong>الخدمة:</strong> <?= e(localized($request['service_name_ar'],$request['service_name_en']??null)) ?></p><p><strong>الوصف:</strong> <?= e($request['description']??'') ?></p><p><strong>المنطقة:</strong> <?= e(localized($request['location_name_ar']??'-',$request['location_name_en']??null)) ?></p><?php if($conversation): ?><a class="btn btn-outline-info" href="<?= url('/employee/conversations/'.$request['id']) ?>"><i class="fa-solid fa-comments"></i> متابعة المحادثة</a><?php endif; ?></div></div><div class="col-lg-5"><div class="card p-4"><h6>سجل الحالة</h6><?php foreach($history as $h): ?><div class="border-bottom py-2"><?= statusBadge($h['new_status']) ?> <span class="small text-muted"><?= e($h['changed_at']) ?></span></div><?php endforeach; ?></div></div></div>
