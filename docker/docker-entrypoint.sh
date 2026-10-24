@@ -4,9 +4,16 @@ set -e
 PORT="${PORT:-80}"
 export PORT
 
+# Fix Railway multiple MPM issue
+rm -f /etc/apache2/mods-enabled/mpm_event.* /etc/apache2/mods-enabled/mpm_worker.* 2>/dev/null || true
+a2dismod mpm_event 2>/dev/null || true
+a2dismod mpm_worker 2>/dev/null || true
+a2enmod mpm_prefork 2>/dev/null || true
+
 # Configure Apache port dynamically for Railway ($PORT)
 sed -i "s/Listen 80/Listen ${PORT}/g" /etc/apache2/ports.conf 2>/dev/null || true
 sed -i "s/<VirtualHost \*:80>/<VirtualHost \*:${PORT}>/g" /etc/apache2/sites-available/000-default.conf 2>/dev/null || true
+sed -i "s/<VirtualHost \*:[0-9]*>/<VirtualHost \*:${PORT}>/g" /etc/apache2/sites-available/000-default.conf 2>/dev/null || true
 
 # Ensure storage directories exist and are writable
 mkdir -p /var/www/html/storage/cache /var/www/html/storage/logs /var/www/html/storage/uploads
