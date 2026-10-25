@@ -84,8 +84,8 @@ function e(?string $value): string
 function asset(string $path): string
 {
     $cleanPath = ltrim($path, '/');
-    $fullFile = PUBLIC_PATH . '/assets/' . $cleanPath;
-    $v = file_exists($fullFile) ? filemtime($fullFile) : time();
+    $realFile = dirname(__DIR__, 2) . '/public/assets/' . $cleanPath;
+    $v = file_exists($realFile) ? filemtime($realFile) : time();
     return BASE_PATH . '/public/assets/' . $cleanPath . '?v=' . $v;
 }
 
