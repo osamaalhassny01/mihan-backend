@@ -78,7 +78,7 @@
 | `GET /admin/ai` | `AdminController::aiSettings` | `admin` (`manage_ai`) | ✅ 200 OK |
 
 ---
-
+ 
 ## 5. مصفوفة التحقق الفعلي والاختبارات المباشرة (Runtime Suites Matrix)
 
 | مجموعة الاختبارات | الملف | عدد الاختبارات | النتيجة |
