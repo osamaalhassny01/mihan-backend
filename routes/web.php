@@ -156,6 +156,7 @@ $router->get('/employee/conversations', 'EmployeeController@conversations');
 $router->get('/employee/conversations/{id}', 'EmployeeController@conversation');
 
 // ---------------- REST API (Mobile App & External Clients) ----------------
+$router->get('/api/ping', 'ApiController@ping');
 $router->post('/api/login', 'ApiController@login');
 $router->post('/api/register', 'ApiController@register');
 $router->get('/api/me', 'ApiController@me');
@@ -187,5 +188,14 @@ $router->get('/api/provider/profile', 'ApiController@providerProfile');
 $router->post('/api/provider/availability', 'ApiController@toggleAvailability');
 $router->post('/api/provider/locations', 'ApiController@updateCoverageLocations');
 $router->get('/api/provider/finance', 'ApiController@providerFinance');
+
+// Employee API endpoints
+$router->get('/api/employee/dashboard', 'ApiController@employeeDashboard');
+$router->get('/api/employee/requests', 'ApiController@employeeRequests');
+$router->get('/api/employee/complaints', 'ApiController@employeeComplaints');
+
+// Admin API endpoints
+$router->get('/api/admin/dashboard', 'ApiController@adminDashboard');
+$router->get('/api/admin/users', 'ApiController@adminUsers');
 
 return $router;

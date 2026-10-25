@@ -59,6 +59,25 @@ class App
         if (ob_get_level() > 0) { @ob_end_clean(); }
         http_response_code(500);
 
+        $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
+        $base = defined('BASE_PATH') ? BASE_PATH : '';
+        $relative = ($base !== '' && str_starts_with($path, $base)) ? substr($path, strlen($base)) : $path;
+
+        if (str_starts_with($relative, '/api/') || str_starts_with($path, '/api/')) {
+            header('Content-Type: application/json; charset=utf-8');
+            header('Access-Control-Allow-Origin: *');
+            echo json_encode([
+                'success' => false,
+                'message' => 'حدث خطأ في معالجة طلب API بالخادم: ' . $e->getMessage(),
+                'errors'  => (defined('APP_ENV') && APP_ENV === 'development') ? [
+                    'exception' => get_class($e),
+                    'file'      => $e->getFile(),
+                    'line'      => $e->getLine(),
+                ] : null,
+            ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+            return;
+        }
+
         if (defined('APP_ENV') && APP_ENV === 'development') {
             echo '<div style="direction:ltr;text-align:left;font-family:monospace;background:#1e1e1e;color:#f88;padding:24px;white-space:pre-wrap">';
             echo '<h2 style="color:#f66">Uncaught ' . htmlspecialchars(get_class($e)) . '</h2>';
