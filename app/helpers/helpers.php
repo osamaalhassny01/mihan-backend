@@ -83,7 +83,10 @@ function e(?string $value): string
 
 function asset(string $path): string
 {
-    return BASE_PATH . '/public/assets/' . ltrim($path, '/');
+    $cleanPath = ltrim($path, '/');
+    $fullFile = PUBLIC_PATH . '/assets/' . $cleanPath;
+    $v = file_exists($fullFile) ? filemtime($fullFile) : time();
+    return BASE_PATH . '/public/assets/' . $cleanPath . '?v=' . $v;
 }
 
 function url(string $path = ''): string

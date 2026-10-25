@@ -235,7 +235,7 @@
 </div>
 
 <!-- ============ PROVIDER CALL TO ACTION ============ -->
-<div id="about" class="hero-section text-center mb-4 py-5" style="background: linear-gradient(135deg, #0f766e 0%, #1e293b 100%);">
+<div id="about" class="hero-section text-center mb-4 py-5" style="background: linear-gradient(135deg, #0b3734 0%, #0f766e 100%);">
   <div class="hero-content">
     <h2 class="fw-bold text-white mb-2">هل أنت مهني أو صاحب حرفة متميزة؟</h2>
     <p class="lead text-white opacity-90 mb-4 mx-auto" style="max-width:650px;">
