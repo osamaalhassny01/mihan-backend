@@ -59,8 +59,8 @@
 <!-- ============ CATEGORIES ============ -->
 <div class="d-flex justify-content-between align-items-end mb-4">
   <div>
-    <h3 class="section-title mb-1"><i class="fa-solid fa-layer-group text-primary me-2"></i>استكشف حسب التخصص</h3>
-    <p class="section-subtitle mb-0">اختر المجال الذي تحتاجه وتواصل مع نخبة المهنيين</p>
+    <h3 class="section-title mb-1" style="color: #0b3734 !important;"><i class="fa-solid fa-layer-group me-2" style="color: #0f766e;"></i>استكشف حسب التخصص</h3>
+    <p class="section-subtitle mb-0" style="color: #527976;">اختر المجال الذي تحتاجه وتواصل مع نخبة المهنيين</p>
   </div>
   <a href="<?= url('/services') ?>" class="btn btn-outline-primary btn-sm">
     عرض كافة الخدمات <i class="fa-solid fa-arrow-left ms-1"></i>

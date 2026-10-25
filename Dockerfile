@@ -21,7 +21,8 @@ COPY docker/apache.conf /etc/apache2/sites-available/000-default.conf
 COPY docker/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
-# Copy app files
+# Copy app files (with build-cache breaker)
+ARG BUILD_DATE=unknown
 WORKDIR /var/www/html
 COPY . /var/www/html
 
