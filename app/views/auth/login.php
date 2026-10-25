@@ -12,10 +12,10 @@
               <i class="fa-solid fa-shield-halved text-warning"></i>
               <span class="small fw-bold">بوابة الدخول الآمن</span>
             </div>
-            <h3 class="fw-bold mb-3" style="font-size: 1.8rem; line-height: 1.3;">
-              منظومة <span style="color: #5eead4;">مِهَن</span> الرقمية الذكية
+            <h3 class="fw-bold mb-3" style="font-size: 1.85rem; line-height: 1.4; color: #ffffff;">
+              منظومة <span style="color: #fbbf24; text-shadow: 0 0 16px rgba(251, 191, 36, 0.45);">مِهَن</span> الرقمية الذكية
             </h3>
-            <p class="small" style="color: #a7f3d0; line-height: 1.7;">
+            <p class="small" style="color: rgba(255, 255, 255, 0.88); line-height: 1.8; font-size: 0.92rem;">
               بوابتك الموحدة للوصول إلى إدارة الطلبات، متابعة الخدمات، التوجيه الذكي، والرقابة الفورية على العمليات.
             </p>
           </div>
