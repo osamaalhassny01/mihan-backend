@@ -959,4 +959,102 @@ class ApiController extends Controller
         $users = $db->query("SELECT id, name, email, phone, role, is_active, created_at FROM users ORDER BY id DESC LIMIT 50")->fetchAll(PDO::FETCH_ASSOC);
         $this->json($users);
     }
+
+    /**
+     * Chunked Upload Endpoint
+     * Handles segmented file uploads up to 300MB
+     * POST /api/upload/chunk
+     */
+    public function uploadChunk(): void
+    {
+        $user = $this->requireUser();
+
+        $uploadId = preg_replace('/[^a-zA-Z0-9_\-]/', '', (string)($_POST['upload_id'] ?? ''));
+        $chunkIndex = isset($_POST['chunk_index']) ? (int)$_POST['chunk_index'] : -1;
+        $totalChunks = isset($_POST['total_chunks']) ? (int)$_POST['total_chunks'] : -1;
+        $fileName = basename((string)($_POST['file_name'] ?? 'uploaded_file.bin'));
+
+        if (empty($uploadId) || $chunkIndex < 0 || $totalChunks <= 0) {
+            $this->error('بيانات التجزئة غير صالحة (upload_id, chunk_index, total_chunks مطلوبة)', 422);
+        }
+
+        if (!isset($_FILES['file_chunk']) || $_FILES['file_chunk']['error'] !== UPLOAD_ERR_OK) {
+            $this->error('فشل في استلام الجزء المرفوع', 400);
+        }
+
+        // الحد الأقصى الإجمالي المسموح به: 300 ميجابايت
+        $maxTotalSize = 300 * 1024 * 1024;
+
+        $tempDir = __DIR__ . '/../../storage/chunks/' . $uploadId;
+        if (!is_dir($tempDir)) {
+            @mkdir($tempDir, 0777, true);
+        }
+
+        $chunkFile = $tempDir . '/chunk_' . $chunkIndex;
+        if (!move_uploaded_file($_FILES['file_chunk']['tmp_name'], $chunkFile)) {
+            $this->error('فشل حفظ الجزء المرفوع في مسار التجهيز', 500);
+        }
+
+        // التحقق من اكتمال الأجزاء
+        $receivedChunks = glob($tempDir . '/chunk_*');
+        if (count($receivedChunks) === $totalChunks) {
+            $finalDir = __DIR__ . '/../../public/uploads/files/' . date('Y/m');
+            if (!is_dir($finalDir)) {
+                @mkdir($finalDir, 0777, true);
+            }
+
+            $sanitizedName = time() . '_' . preg_replace('/[^a-zA-Z0-9._\-]/', '_', $fileName);
+            $finalPath = $finalDir . '/' . $sanitizedName;
+
+            $out = fopen($finalPath, 'wb');
+            if (!$out) {
+                $this->error('فشل في دمج ملف الإخراج النهائي', 500);
+            }
+
+            $totalSize = 0;
+            for ($i = 0; $i < $totalChunks; $i++) {
+                $partPath = $tempDir . '/chunk_' . $i;
+                if (!file_exists($partPath)) {
+                    fclose($out);
+                    @unlink($finalPath);
+                    $this->error("الجزء رقم {$i} مفقود من التجميع", 400);
+                }
+
+                $in = fopen($partPath, 'rb');
+                while (!feof($in)) {
+                    $buf = fread($in, 65536);
+                    $totalSize += strlen($buf);
+                    if ($totalSize > $maxTotalSize) {
+                        fclose($in);
+                        fclose($out);
+                        @unlink($finalPath);
+                        array_map('unlink', glob($tempDir . '/*'));
+                        @rmdir($tempDir);
+                        $this->error('تجاوز الحجم الأقصى المسموح به (300 ميجابايت)', 413);
+                    }
+                    fwrite($out, $buf);
+                }
+                fclose($in);
+                @unlink($partPath);
+            }
+            fclose($out);
+            @rmdir($tempDir);
+
+            $relativeUrl = '/uploads/files/' . date('Y/m') . '/' . $sanitizedName;
+            $this->json([
+                'completed'    => true,
+                'file_name'    => $fileName,
+                'file_url'     => $relativeUrl,
+                'file_size'    => $totalSize,
+                'total_chunks' => $totalChunks,
+            ], 200, 'تم استلام وتجميع كافة أجزاء الملف بنجاح');
+        }
+
+        $this->json([
+            'completed'       => false,
+            'chunk_index'     => $chunkIndex,
+            'received_chunks' => count($receivedChunks),
+            'total_chunks'    => $totalChunks,
+        ], 200, "تم استلام الجزء {$chunkIndex} بنجاح");
+    }
 }
