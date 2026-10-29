@@ -198,7 +198,4 @@ $router->get('/api/employee/complaints', 'ApiController@employeeComplaints');
 $router->get('/api/admin/dashboard', 'ApiController@adminDashboard');
 $router->get('/api/admin/users', 'ApiController@adminUsers');
 
-// Chunked Upload API (Supports large multipart files up to 300MB)
-$router->post('/api/upload/chunk', 'ApiController@uploadChunk');
-
 return $router;
