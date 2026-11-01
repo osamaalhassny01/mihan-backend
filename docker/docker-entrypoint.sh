@@ -36,6 +36,15 @@ if [ -n "$DB_HOST" ] || [ -n "$MYSQLHOST" ] || [ -n "$DATABASE_URL" ] || [ -n "$
             } else {
                 echo "Database already initialized.\n";
             }
+
+            // Check and apply Mahir AI migration if needed
+            $checkMahir = $pdo->query("SHOW TABLES LIKE '\''mahir_professions'\''")->fetch();
+            if (!$checkMahir && file_exists("/var/www/html/database/mahir_ai_migration.sql")) {
+                echo "Running Mahir AI migration...\n";
+                $sqlMahir = file_get_contents("/var/www/html/database/mahir_ai_migration.sql");
+                $pdo->exec($sqlMahir);
+                echo "Mahir AI migration completed successfully!\n";
+            }
         } catch (Exception $e) {
             echo "Notice: DB check deferred (" . $e->getMessage() . ")\n";
         }

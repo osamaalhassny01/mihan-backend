@@ -198,4 +198,19 @@ $router->get('/api/employee/complaints', 'ApiController@employeeComplaints');
 $router->get('/api/admin/dashboard', 'ApiController@adminDashboard');
 $router->get('/api/admin/users', 'ApiController@adminUsers');
 
+// -------- Mahir AI API (Flutter) --------
+$router->get('/api/mahir/professions', 'MahirApiController@professions');
+$router->post('/api/mahir/session/start', 'MahirApiController@startSession');
+$router->post('/api/mahir/chat', 'MahirApiController@chat');
+$router->get('/api/mahir/session/{token}/history', 'MahirApiController@history');
+$router->get('/api/mahir/professions/{id}', 'MahirApiController@professionDetail');
+
+// -------- Mahir AI Admin Panel --------
+$router->get('/admin/mahir', 'AdminMahirController@index');
+$router->post('/admin/mahir/store', 'AdminMahirController@store');
+$router->post('/admin/mahir/{id}/update', 'AdminMahirController@update');
+$router->post('/admin/mahir/{id}/toggle', 'AdminMahirController@toggle');
+$router->post('/admin/mahir/{id}/delete', 'AdminMahirController@delete');
+$router->get('/admin/mahir/stats', 'AdminMahirController@stats');
+
 return $router;
