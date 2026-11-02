@@ -58,3 +58,10 @@ INSERT IGNORE INTO `mahir_professions` (`id`, `name`, `name_en`, `category`, `ic
 (8, 'الزراعة المنزلية', 'Home Gardening', 'زراعة', '🌿', 'زراعة النباتات في المنزل والحديقة', NULL, 8),
 (9, 'صيانة السيارات', 'Car Maintenance', 'سيارات', '🚗', 'أساسيات صيانة السيارة التي يمكنك فعلها بنفسك', NULL, 9),
 (10, 'الخياطة والتطريز', 'Sewing', 'يدوية', '🧵', 'تعلم الخياطة اليدوية والآلية', NULL, 10);
+
+-- Update Gemini default model to gemini-1.5-flash
+UPDATE `ai_provider_settings`
+SET `model` = 'gemini-1.5-flash',
+    `base_url` = 'https://generativelanguage.googleapis.com/v1beta'
+WHERE `provider` = 'gemini' AND (`model` LIKE '%3.1%' OR `model` IS NULL OR `model` = '');
+

@@ -1,7 +1,7 @@
 <?php
 $defaults = [
     'local' => ['model'=>'','base_url'=>'','temperature'=>.2,'max_tokens'=>700,'timeout'=>20,'is_enabled'=>1,'is_default'=>0,'system_prompt'=>''],
-    'gemini' => ['model'=>'gemini-3.1-flash-lite','base_url'=>'https://generativelanguage.googleapis.com/v1beta','temperature'=>.2,'max_tokens'=>700,'timeout'=>20,'is_enabled'=>0,'is_default'=>0,'system_prompt'=>''],
+    'gemini' => ['model'=>'gemini-1.5-flash','base_url'=>'https://generativelanguage.googleapis.com/v1beta','temperature'=>.2,'max_tokens'=>700,'timeout'=>20,'is_enabled'=>0,'is_default'=>0,'system_prompt'=>''],
     'openai' => ['model'=>'gpt-4o-mini','base_url'=>'https://api.openai.com/v1','temperature'=>.2,'max_tokens'=>700,'timeout'=>20,'is_enabled'=>0,'is_default'=>0,'system_prompt'=>''],
     'groq' => ['model'=>'','base_url'=>'https://api.groq.com/openai/v1','temperature'=>.2,'max_tokens'=>700,'timeout'=>20,'is_enabled'=>0,'is_default'=>0,'system_prompt'=>''],
     'openai_compatible' => ['model'=>'','base_url'=>'','temperature'=>.2,'max_tokens'=>700,'timeout'=>20,'is_enabled'=>0,'is_default'=>0,'system_prompt'=>''],
@@ -9,7 +9,7 @@ $defaults = [
 $providerData=[];
 foreach($providers as $key=>$label){
     $s=array_merge($defaults[$key]??$defaults['openai_compatible'],$settings[$key]??[]);
-    if($key==='gemini'){$s['model']=$s['model']?:'gemini-3.1-flash-lite';$s['base_url']=$s['base_url']?:'https://generativelanguage.googleapis.com/v1beta';}
+    if($key==='gemini'){$s['model']=($s['model'] && strpos($s['model'], '3.1') === false)?$s['model']:'gemini-1.5-flash';$s['base_url']=$s['base_url']?:'https://generativelanguage.googleapis.com/v1beta';}
     if($key==='openai')$s['base_url']=$s['base_url']?:'https://api.openai.com/v1';
     if($key==='groq')$s['base_url']=$s['base_url']?:'https://api.groq.com/openai/v1';
     $providerData[$key]=[
@@ -96,7 +96,15 @@ $operationLabels=['chat'=>'محادثة','analyze'=>'تحليل','connection_tes
         </div>
 
         <div class="row g-3">
-          <div class="col-md-6"><label class="form-label">Model ID</label><input name="model" id="aiModel" class="form-control" placeholder="مثال: gemini-3.1-flash-lite"></div>
+          <div class="col-md-6">
+            <label class="form-label">Model ID</label>
+            <input name="model" id="aiModel" class="form-control" list="geminiModelsList" placeholder="مثال: gemini-1.5-flash">
+            <datalist id="geminiModelsList">
+              <option value="gemini-1.5-flash">Gemini 1.5 Flash (سريع واقتصادي وموصى به)</option>
+              <option value="gemini-2.0-flash">Gemini 2.0 Flash (الجيل الأحدث)</option>
+              <option value="gemini-1.5-pro">Gemini 1.5 Pro (للمهام المعقدة والتحليل العميق)</option>
+            </datalist>
+          </div>
           <div class="col-md-6"><label class="form-label">Base URL</label><input name="base_url" id="aiBaseUrl" class="form-control" placeholder="https://generativelanguage.googleapis.com/v1beta"></div>
         </div>
         <div class="row g-3 mt-1">

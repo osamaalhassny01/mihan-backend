@@ -5,7 +5,10 @@ class AIEncryption
     {
         $raw = trim((string)env('AI_ENCRYPTION_KEY', ''));
         if ($raw === '') {
-            $raw = self::createPersistentKey();
+            $raw = trim((string)env('APP_KEY', ''));
+        }
+        if ($raw === '') {
+            $raw = 'mihan-platform-secure-encryption-key-2026';
         }
         return hash('sha256', $raw, true);
     }

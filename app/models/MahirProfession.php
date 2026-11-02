@@ -24,6 +24,8 @@ class MahirProfession extends Model
             if (!$check) {
                 self::createTablesAndSeed($db);
             }
+            // Auto-correct invalid Gemini model name if present
+            $db->exec("UPDATE ai_provider_settings SET model = 'gemini-1.5-flash' WHERE provider = 'gemini' AND (model LIKE '%3.1%' OR model IS NULL OR model = '')");
             self::$tablesChecked = true;
         } catch (Throwable $e) {
             error_log('Mahir AI table check notice: ' . $e->getMessage());

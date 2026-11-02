@@ -20,7 +20,13 @@ class GeminiProvider implements AIProviderInterface
     public function __construct(array $s)
     {
         $this->key = trim((string)($s['api_key'] ?? ''));
-        $this->model = trim((string)($s['model'] ?? '')) ?: 'gemini-3.1-flash-lite';
+        $rawModel = trim((string)($s['model'] ?? ''));
+        if ($rawModel === '' || $rawModel === 'gemini-3.1-flash-lite' || strpos($rawModel, '3.1') !== false) {
+            $rawModel = 'gemini-1.5-flash';
+        }
+        $rawModel = preg_replace('#^models/#', '', $rawModel);
+        $this->model = $rawModel;
+
         $configuredBaseUrl = trim((string)($s['base_url'] ?? ''));
         if ($configuredBaseUrl === '') {
             $configuredBaseUrl = 'https://generativelanguage.googleapis.com/v1beta';
@@ -130,7 +136,7 @@ class GeminiProvider implements AIProviderInterface
             $payload['systemInstruction'] = ['parts' => $systemParts];
         }
 
-        $url = $this->baseUrl . '/models/' . rawurlencode($this->model) . ':generateContent';
+        $url = $this->baseUrl . '/models/' . rawurlencode($this->model) . ':generateContent?key=' . rawurlencode($this->key);
 
         $ch = curl_init($url);
         curl_setopt_array($ch, [
@@ -160,6 +166,12 @@ class GeminiProvider implements AIProviderInterface
         $data = json_decode($body, true);
         if (!is_array($data)) {
             throw new RuntimeException('استجابة Gemini غير صالحة.');
+        }
+
+        if ($status === 404 && $this->model !== 'gemini-1.5-flash') {
+            // المحاولة التلقائية بنموذج gemini-1.5-flash القياسي في حال كان اسم النموذج السابق غير مدعوم
+            $this->model = 'gemini-1.5-flash';
+            return $this->request($messages, $options);
         }
 
         if ($status < 200 || $status >= 300) {
