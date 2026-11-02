@@ -207,6 +207,8 @@ $router->get('/api/mahir/professions/{id}', 'MahirApiController@professionDetail
 
 // -------- Mahir AI Admin Panel --------
 $router->get('/admin/mahir', 'AdminMahirController@index');
+$router->post('/admin/mahir/save-gemini', 'AdminMahirController@saveGemini');
+$router->post('/admin/mahir/test-gemini', 'AdminMahirController@testGemini');
 $router->post('/admin/mahir/store', 'AdminMahirController@store');
 $router->post('/admin/mahir/{id}/update', 'AdminMahirController@update');
 $router->post('/admin/mahir/{id}/toggle', 'AdminMahirController@toggle');

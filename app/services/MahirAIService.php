@@ -1,10 +1,49 @@
 <?php
 require_once __DIR__ . '/AI/AIServiceFactory.php';
+require_once __DIR__ . '/AI/Encryption.php';
+require_once __DIR__ . '/AI/providers/GeminiProvider.php';
 require_once __DIR__ . '/../models/MahirProfession.php';
 require_once __DIR__ . '/../models/MahirSession.php';
 
 class MahirAIService
 {
+    /**
+     * الحصول على مفتاح Gemini API من قاعدة البيانات أو متغيرات البيئة
+     */
+    public static function getGeminiKey(): string
+    {
+        // 1. البحث في إعدادات المزود بقاعدة البيانات
+        try {
+            $db = Database::getInstance();
+            $stmt = $db->query("SELECT api_key_encrypted FROM ai_provider_settings WHERE provider = 'gemini' LIMIT 1");
+            $enc = $stmt->fetchColumn();
+            if ($enc) {
+                $dec = AIEncryption::decrypt((string)$enc);
+                if (!empty($dec)) {
+                    return trim($dec);
+                }
+            }
+        } catch (Throwable $e) {}
+
+        // 2. البحث في متغيرات البيئة
+        $envKey = trim((string)(
+            getenv('GEMINI_API_KEY') ?: 
+            (getenv('AI_API_KEY') ?: 
+            ($_ENV['GEMINI_API_KEY'] ?? 
+            ($_ENV['AI_API_KEY'] ?? '')))
+        ));
+
+        return $envKey;
+    }
+
+    /**
+     * التحقق مما إذا كان اتصال Gemini مهيأ
+     */
+    public static function isConfigured(): bool
+    {
+        return self::getGeminiKey() !== '';
+    }
+
     /**
      * System prompt الأساسي لـ ماهر AI - محصور على المهن فقط
      */
@@ -16,31 +55,31 @@ class MahirAIService
         $professionList = implode('، ', $professionNames);
 
         $base = <<<PROMPT
-أنت "ماهر"، مساعد ذكي متخصص في تعليم المهن العملية. مهمتك الوحيدة هي مساعدة الناس على تعلم المهن خطوة بخطوة.
+أنت "ماهر"، مساعد ذكي ومعلم خبير للمهن والحرف العملية في منصة مهن.
+مهمتك الأساسية هي تدريب المستخدمين وشرح خطوات المهن خطوة بخطوة بطريقة عملية ومبسطة.
 
 قواعدك الصارمة:
-1. تجيب فقط على الأسئلة المتعلقة بالمهن العملية والحرف.
-2. المهن التي تُعلّمها حالياً هي: {$professionList}.
-3. إذا سألك أحد عن موضوع خارج نطاق المهن، قل بلطف: "أنا ماهر، متخصص في تعليم المهن العملية فقط. يمكنني مساعدتك في تعلم: {$professionList}."
-4. لا تجب على أسئلة سياسية أو دينية أو شخصية أو غير مهنية.
-5. اشرح الخطوات بشكل مبسط ومتسلسل (خطوة 1، خطوة 2...).
-6. ابدأ دائماً بذكر الأدوات أو المواد المطلوبة قبل الشرح.
-7. أضف تنبيهات السلامة عند الحاجة.
-8. استخدم اللغة العربية دائماً.
-9. اسمك "ماهر" فقط، لا تذكر أنك Gemini أو AI من Google أو أي شيء آخر.
+1. تجيب فقط على الأسئلة المتعلقة بالمهن الحرفية والعملية (مثل: {$professionList}).
+2. إذا سألك أحد عن موضوع خارج نطاق المهن والحرف، اعتذر بلطف وقل: "أنا ماهر، مدربك المهني المتخصص في تعليم الحرف والمهن العملية فقط. يمكنني تدريبك على: {$professionList}."
+3. لا تجب على أي أسئلة سياسية أو دينية أو شخصية أو خارج نطاق الحرف والمهن.
+4. رتّب إجاباتك بخطوات مرقمة وواضحة (خطوة 1، خطوة 2...).
+5. ابدأ دائماً بذكر الأدوات ومعدات السلامة المطلوبة قبل البدء في الخطوات.
+6. استخدم لغة عربية سليمة وواضحة وسهلة الفهم.
+7. اسمك "ماهر" فقط، ولا تذكر مطلقاً اسم النموذج أو الشركة المطورة.
 
-أسلوبك: مبسط، ودود، تعليمي، مثل معلم صبور يشرح لمبتدئ.
+أسلوبك: مدرب حرفي محترف، صبور، يشجع المتعلم، ويقدم نصائح عملية من واقع الميدان.
 PROMPT;
 
         if ($profession && !empty($profession['system_prompt_extra'])) {
-            $base .= "\n\nتعليمات إضافية لمهنة {$profession['name']}:\n" . $profession['system_prompt_extra'];
+            $base .= "\n\nتعليمات إضافية وتخصصية لمهنة {$profession['name']}:\n" . $profession['system_prompt_extra'];
         }
 
         return $base;
     }
 
     /**
-     * إرسال رسالة لـ ماهر AI والحصول على رد
+     * إرسال رسالة لـ ماهر AI والحصول على رد حصرياً عبر سيرفر Google Gemini
+     * (بدون أي ردود محلية معلبة)
      */
     public static function chat(
         string $userMessage,
@@ -48,6 +87,17 @@ PROMPT;
         ?array $profession = null,
         ?int $userId = null
     ): array {
+        $geminiKey = self::getGeminiKey();
+
+        // لا يوجد رد محلي معلب - إشعار مباشر بضرورة ربط السيرفر
+        if (empty($geminiKey)) {
+            return [
+                'success'  => false,
+                'message'  => '⚠️ لم يتم تفعيل مفتاح Google Gemini في السيرفر بعد. يُرجى حفظ المفتاح من لوحة التحكم > إدارة ماهر AI لتفعيل الإجابات الحية عبر السيرفر.',
+                'provider' => 'gemini_unconfigured',
+            ];
+        }
+
         $sessionModel = new MahirSession();
         $history = $sessionModel->getMessages($sessionId);
 
@@ -68,12 +118,21 @@ PROMPT;
         $startTime = microtime(true);
 
         try {
-            $result = AIServiceFactory::chat($messages, [
+            // اتصال حصري ومباشر بسيرفر Google Gemini (مودل gemini-1.5-flash المعتمد)
+            $provider = new GeminiProvider([
+                'api_key'     => $geminiKey,
+                'model'       => 'gemini-1.5-flash',
+                'base_url'    => 'https://generativelanguage.googleapis.com/v1beta',
                 'temperature' => 0.4,
-                'max_tokens'  => 1000,
+                'max_tokens'  => 1500,
+                'timeout'     => 30,
             ]);
 
-            $aiText = $result['text'] ?? 'عذراً، لم أتمكن من الرد في الوقت الحالي.';
+            $aiText = $provider->chat($messages, [
+                'temperature' => 0.4,
+                'max_tokens'  => 1500,
+            ]);
+
             $durationMs = (int)round((microtime(true) - $startTime) * 1000);
 
             // حفظ الرسالتين في سجل الجلسة
@@ -88,13 +147,14 @@ PROMPT;
             return [
                 'success'  => true,
                 'message'  => $aiText,
-                'provider' => $result['provider'] ?? 'gemini',
+                'provider' => 'gemini (gemini-1.5-flash)',
             ];
         } catch (Throwable $e) {
+            $safeError = preg_replace('/(api[_-]?key|authorization|bearer)\s*[:=]?\s*[^\s,;]+/iu', '[REDACTED]', $e->getMessage());
             return [
                 'success' => false,
-                'message' => 'عذراً، حدث خطأ تقني. حاول مرة أخرى.',
-                'error'   => $e->getMessage(),
+                'message' => '⚠️ فشل الاتصال بسيرفر Google Gemini: ' . $safeError,
+                'error'   => $safeError,
             ];
         }
     }
@@ -149,7 +209,12 @@ PROMPT;
                 ")->fetchAll(PDO::FETCH_ASSOC),
             ];
         } catch (Throwable $e) {
-            return ['total_sessions' => 0, 'total_messages' => 0, 'today_messages' => 0, 'top_professions' => []];
+            return [
+                'total_sessions'  => 0,
+                'total_messages'  => 0,
+                'today_messages'  => 0,
+                'top_professions' => [],
+            ];
         }
     }
 }

@@ -21,7 +21,7 @@ class GeminiProvider implements AIProviderInterface
     {
         $this->key = trim((string)($s['api_key'] ?? ''));
         $rawModel = trim((string)($s['model'] ?? ''));
-        if ($rawModel === '' || $rawModel === 'gemini-3.1-flash-lite' || strpos($rawModel, '3.1') !== false) {
+        if ($rawModel === '' || strpos($rawModel, '3.1') !== false || strpos($rawModel, '2.5') !== false) {
             $rawModel = 'gemini-1.5-flash';
         }
         $rawModel = preg_replace('#^models/#', '', $rawModel);
@@ -259,19 +259,39 @@ class GeminiProvider implements AIProviderInterface
 
     public function testConnection(): array
     {
-        $text = $this->request(
-            [
-                ['role' => 'user', 'content' => 'Reply with exactly one word: OK']
-            ],
-            [
-                'temperature' => 0,
-                'max_tokens' => 10
-            ]
-        );
+        // 1. التحقق المباشر من المفتاح عبر نقطة نهاية النماذج الرسمية لـ Google (سريع ودون استهلاك كوتا توليد)
+        $url = $this->baseUrl . '/models?key=' . rawurlencode($this->key);
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_HTTPGET => true,
+            CURLOPT_TIMEOUT => min(10, $this->timeout),
+            CURLOPT_CONNECTTIMEOUT => 5,
+        ]);
+        $body = curl_exec($ch);
+        $status = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
 
-        return [
-            'ok' => stripos(trim($text), 'OK') !== false,
-            'message' => trim($text)
-        ];
+        $data = json_decode((string)$body, true);
+        if ($status === 200 && is_array($data) && !empty($data['models'])) {
+            return [
+                'ok' => true,
+                'message' => 'تم التحقق من المفتاح بنجاح! الاتصال بسيرفر Google Gemini نشط 100%.'
+            ];
+        }
+
+        if ($status === 400 || $status === 403) {
+            $err = $data['error']['message'] ?? 'المفتاح غير صالح أو ليس لديه الصلاحيات المطلوبة في Google AI Studio.';
+            return ['ok' => false, 'message' => $err];
+        }
+
+        // 2. محاولة توليد نص قصير للتأكد
+        try {
+            $text = $this->request([['role' => 'user', 'content' => 'قل مرحباً']], ['max_tokens' => 10]);
+            return ['ok' => true, 'message' => 'الاتصال ناجح: ' . trim($text)];
+        } catch (Throwable $e) {
+            $err = !empty($data['error']['message']) ? $data['error']['message'] : $e->getMessage();
+            return ['ok' => false, 'message' => $err];
+        }
     }
 }

@@ -170,7 +170,7 @@ CREATE TABLE `ai_provider_settings` (
 
 INSERT INTO `ai_provider_settings` (`id`, `provider`, `model`, `api_key_encrypted`, `base_url`, `temperature`, `max_tokens`, `timeout`, `system_prompt`, `is_enabled`, `is_default`, `created_at`, `updated_at`) VALUES
 (1, 'local', NULL, NULL, NULL, 0.20, 700, 20, '', 1, 0, '2026-09-22 20:40:04', '2026-09-22 23:44:35'),
-(2, 'gemini', 'gemini-3.1-flash-lite', '/uMykG+4eOFRItLNM/03tYe6rwKUOzmdGF3BMxQHQ0yplv27VwG1QhkKWFF4f02cVplAn3h28aBDNQ9o5F2sqlNQH1Io09QeCo7ih0ckjLro', 'https://generativelanguage.googleapis.com/v1beta', 0.20, 700, 20, NULL, 1, 1, '2026-09-22 21:06:46', '2026-09-22 23:44:35'),
+(2, 'gemini', 'gemini-1.5-flash', '/uMykG+4eOFRItLNM/03tYe6rwKUOzmdGF3BMxQHQ0yplv27VwG1QhkKWFF4f02cVplAn3h28aBDNQ9o5F2sqlNQH1Io09QeCo7ih0ckjLro', 'https://generativelanguage.googleapis.com/v1beta', 0.20, 700, 20, NULL, 1, 1, '2026-09-22 21:06:46', '2026-09-22 23:44:35'),
 (3, 'openai', 'gpt-4o-mini', NULL, 'https://api.openai.com/v1', 0.20, 700, 20, NULL, 0, 0, '2026-09-22 21:06:46', '2026-09-22 21:06:46'),
 (4, 'groq', NULL, NULL, 'https://api.groq.com/openai/v1', 0.20, 700, 20, NULL, 0, 0, '2026-09-22 21:06:46', '2026-09-22 21:06:46'),
 (5, 'openai_compatible', NULL, NULL, NULL, 0.20, 700, 20, NULL, 0, 0, '2026-09-22 21:06:46', '2026-09-22 21:06:46');

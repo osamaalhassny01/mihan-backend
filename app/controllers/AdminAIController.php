@@ -47,56 +47,111 @@ class AdminAIController extends Controller
     }
     public function save()
     {
-        $this->verifyCsrfOrFail();$provider=$this->input('provider');if(!array_key_exists($provider,$this->providers())){$this->redirect('/admin/ai');return;}
-        $m=new AIProviderSetting();$old=$m->getProvider($provider);$key=trim((string)$this->input('api_key',''));$data=['model'=>$this->input('model')?:null,'base_url'=>$this->input('base_url')?:null,'temperature'=>max(0,min(2,(float)$this->input('temperature',0.2))),'max_tokens'=>max(100,min(8000,(int)$this->input('max_tokens',700))),'timeout'=>max(5,min(60,(int)$this->input('timeout',20))),'system_prompt'=>$this->input('system_prompt')?:null,'is_enabled'=>$this->input('is_enabled')==='1'?1:0,'is_default'=>0];
-        try {
-            if($key!=='')$data['api_key_encrypted']=AIEncryption::encrypt($key);elseif($old)$data['api_key_encrypted']=$old['api_key_encrypted'];
-            $m->saveProvider($provider,$data);
-            if($data['is_enabled'])$m->makeDefault($provider);
-            elseif($old&&$old['is_default']){$m->makeDefault('local');}
-            Session::flash('success','تم حفظ إعدادات مزود '.$this->providers()[$provider]);
-        } catch(Throwable $e) {
-            Session::flash('error','تعذر حفظ إعدادات الذكاء الاصطناعي: '.$this->safeError($e->getMessage()));
-        }
-        $this->redirect('/admin/ai');
-    }
-    public function test()
-    {
         $this->verifyCsrfOrFail();
-        $provider=$this->input('provider');
-        if (!array_key_exists($provider,$this->providers())) {
-            $this->json(['ok'=>false,'message'=>'المزود غير موجود'],404);
+        $provider = $this->input('provider');
+        if (!array_key_exists($provider, $this->providers())) {
+            $this->redirect('/admin/ai');
             return;
         }
 
-        $m=new AIProviderSetting();
-        $saved=$m->getProvider($provider) ?: ['provider'=>$provider];
-        $started=microtime(true);
-        $postedKey=trim((string)$this->input('api_key',''));
-        $savedKey=AIEncryption::decrypt($saved['api_key_encrypted']??'');
-        $row=$saved;
-        $row['provider']=$provider;
-        // The test must use the values currently visible in the form. This allows
-        // testing a new key/model/Base URL before saving them.
-        $row['api_key']=$postedKey!=='' ? $postedKey : $savedKey;
-        foreach(['model','base_url','system_prompt'] as $field){
-            $value=$this->input($field,null);
-            if($value!==null) $row[$field]=trim((string)$value);
+        $m = new AIProviderSetting();
+        $old = $m->getProvider($provider);
+        $key = trim((string)$this->input('api_key', ''));
+
+        $rawModel = trim((string)$this->input('model', ''));
+        if ($provider === 'gemini') {
+            if ($rawModel === '' || strpos($rawModel, '3.1') !== false) {
+                $rawModel = 'gemini-1.5-flash';
+            }
         }
-        foreach(['temperature','max_tokens','timeout'] as $field){
-            $value=$this->input($field,null);
-            if($value!==null && $value!=='') $row[$field]=$value;
+
+        $rawBaseUrl = trim((string)$this->input('base_url', ''));
+        if ($provider === 'gemini' && ($rawBaseUrl === '' || strpos($rawBaseUrl, 'openai') !== false)) {
+            $rawBaseUrl = 'https://generativelanguage.googleapis.com/v1beta';
+        }
+
+        $data = [
+            'model'        => $rawModel ?: null,
+            'base_url'     => $rawBaseUrl ?: null,
+            'temperature'  => max(0, min(2, (float)$this->input('temperature', 0.2))),
+            'max_tokens'   => max(100, min(8000, (int)$this->input('max_tokens', 2048))),
+            'timeout'      => max(5, min(60, (int)$this->input('timeout', 30))),
+            'system_prompt'=> $this->input('system_prompt') ?: null,
+            'is_enabled'   => $this->input('is_enabled') === '1' ? 1 : 0,
+            'is_default'   => 0
+        ];
+
+        try {
+            if ($key !== '') {
+                $data['api_key_encrypted'] = AIEncryption::encrypt($key);
+            } elseif ($old) {
+                $data['api_key_encrypted'] = $old['api_key_encrypted'];
+            }
+            $m->saveProvider($provider, $data);
+            if ($data['is_enabled']) {
+                $m->makeDefault($provider);
+            } elseif ($old && $old['is_default']) {
+                $m->makeDefault('local');
+            }
+            Session::flash('success', 'تم حفظ إعدادات مزود ' . $this->providers()[$provider]);
+        } catch (Throwable $e) {
+            Session::flash('error', 'تعذر حفظ إعدادات الذكاء الاصطناعي: ' . $this->safeError($e->getMessage()));
+        }
+        $this->redirect('/admin/ai');
+    }
+
+    public function test()
+    {
+        $this->verifyCsrfOrFail();
+        $provider = $this->input('provider');
+        if (!array_key_exists($provider, $this->providers())) {
+            $this->json(['ok' => false, 'message' => 'المزود غير موجود'], 404);
+            return;
+        }
+
+        $m = new AIProviderSetting();
+        $saved = $m->getProvider($provider) ?: ['provider' => $provider];
+        $started = microtime(true);
+        $postedKey = trim((string)$this->input('api_key', ''));
+        $savedKey = AIEncryption::decrypt($saved['api_key_encrypted'] ?? '');
+        $row = $saved;
+        $row['provider'] = $provider;
+
+        // استخدام المفتاح المدخل حديثاً أو المحفوظ
+        $row['api_key'] = $postedKey !== '' ? $postedKey : $savedKey;
+
+        foreach (['model', 'base_url', 'system_prompt'] as $field) {
+            $value = $this->input($field, null);
+            if ($value !== null) {
+                $row[$field] = trim((string)$value);
+            }
+        }
+        foreach (['temperature', 'max_tokens', 'timeout'] as $field) {
+            $value = $this->input($field, null);
+            if ($value !== null && $value !== '') {
+                $row[$field] = $value;
+            }
+        }
+
+        // ضبط تلقائي لـ Gemini في حالة تركه فارغاً أو اختيار مودل قديم
+        if ($provider === 'gemini') {
+            if (empty($row['model']) || strpos($row['model'], '3.1') !== false) {
+                $row['model'] = 'gemini-1.5-flash';
+            }
+            if (empty($row['base_url']) || strpos($row['base_url'], 'openai') !== false) {
+                $row['base_url'] = 'https://generativelanguage.googleapis.com/v1beta';
+            }
         }
 
         try {
-            $p=$this->buildProvider($provider,$row);
-            $test=$p->testConnection();
-            $this->logTest($provider,!empty($test['ok']),microtime(true)-$started,!empty($test['ok'])?null:(string)($test['message']??'فشل الاختبار.'));
+            $p = $this->buildProvider($provider, $row);
+            $test = $p->testConnection();
+            $this->logTest($provider, !empty($test['ok']), microtime(true) - $started, !empty($test['ok']) ? null : (string)($test['message'] ?? 'فشل الاختبار.'));
             $this->json($test);
-        } catch(Throwable $e) {
-            $safe=$this->safeError($e->getMessage());
-            $this->logTest($provider,false,microtime(true)-$started,$safe);
-            $this->json(['ok'=>false,'message'=>'فشل الاختبار: '.$safe],422);
+        } catch (Throwable $e) {
+            $safe = $this->safeError($e->getMessage());
+            $this->logTest($provider, false, microtime(true) - $started, $safe);
+            $this->json(['ok' => false, 'message' => 'فشل الاختبار: ' . $safe], 422);
         }
     }
     private function buildProvider(string $provider, array $row): AIProviderInterface

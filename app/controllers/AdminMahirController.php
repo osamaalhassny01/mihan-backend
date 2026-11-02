@@ -18,19 +18,102 @@ class AdminMahirController extends Controller
             $model = new MahirProfession();
             $professions = $model->allForAdmin();
             $stats = MahirAIService::getStats();
+            $isConfigured = MahirAIService::isConfigured();
 
             $this->view('admin/mahir/index', [
-                'title'       => 'إدارة ماهر AI',
-                'professions' => $professions,
-                'stats'       => $stats,
+                'title'             => 'إدارة ماهر AI',
+                'professions'       => $professions,
+                'stats'             => $stats,
+                'gemini_configured' => $isConfigured,
+                'gemini_model'      => 'gemini-1.5-flash',
             ], 'dashboard');
         } catch (Throwable $e) {
             Session::flash('error', 'حدث خطأ في تحميل بيانات ماهر AI: ' . $e->getMessage());
             $this->view('admin/mahir/index', [
-                'title'       => 'إدارة ماهر AI',
-                'professions' => [],
-                'stats'       => ['total_sessions' => 0, 'total_messages' => 0, 'today_messages' => 0, 'top_professions' => []],
+                'title'             => 'إدارة ماهر AI',
+                'professions'       => [],
+                'stats'             => ['total_sessions' => 0, 'total_messages' => 0, 'today_messages' => 0, 'top_professions' => []],
+                'gemini_configured' => false,
+                'gemini_model'      => 'gemini-1.5-flash',
             ], 'dashboard');
+        }
+    }
+
+    // حفظ وتفعيل مفتاح Google Gemini مباشرة
+    public function saveGemini(): void
+    {
+        $this->verifyCsrfOrFail();
+        $key = trim((string)$this->input('api_key', ''));
+        if ($key === '') {
+            Session::flash('error', 'يرجى إدخال مفتاح Gemini API صالح.');
+            $this->redirect('/admin/mahir');
+            return;
+        }
+
+        try {
+            require_once __DIR__ . '/../models/AIProviderSetting.php';
+            require_once __DIR__ . '/../services/AI/Encryption.php';
+            require_once __DIR__ . '/../services/AI/providers/GeminiProvider.php';
+
+            $m = new AIProviderSetting();
+            $data = [
+                'model'             => 'gemini-1.5-flash',
+                'api_key_encrypted' => AIEncryption::encrypt($key),
+                'base_url'          => 'https://generativelanguage.googleapis.com/v1beta',
+                'temperature'       => 0.40,
+                'max_tokens'        => 2048,
+                'timeout'           => 30,
+                'is_enabled'        => 1,
+                'is_default'        => 1,
+            ];
+            $m->saveProvider('gemini', $data);
+            $m->makeDefault('gemini');
+
+            // اختبار فوري للمفتاح
+            $provider = new GeminiProvider([
+                'api_key'  => $key,
+                'model'    => 'gemini-1.5-flash',
+                'base_url' => 'https://generativelanguage.googleapis.com/v1beta',
+                'timeout'  => 10,
+            ]);
+            $test = $provider->testConnection();
+
+            if (!empty($test['ok'])) {
+                Session::flash('success', '✓ تم حفظ وتفعيل مفتاح Google Gemini بنجاح! الاتصال بسيرفر الذكاء الاصطناعي نشط ومؤكد.');
+            } else {
+                Session::flash('warning', 'تم حفظ المفتاح، ولكن فحص الاتصال أظهر الملاحظة: ' . ($test['message'] ?? 'فشل الاتصال'));
+            }
+        } catch (Throwable $e) {
+            Session::flash('error', 'تعذر حفظ مفتاح Gemini: ' . $e->getMessage());
+        }
+
+        $this->redirect('/admin/mahir');
+    }
+
+    // اختبار الاتصال بـ Gemini مباشرة
+    public function testGemini(): void
+    {
+        $this->verifyCsrfOrFail();
+        $postedKey = trim((string)$this->input('api_key', ''));
+        $key = $postedKey !== '' ? $postedKey : MahirAIService::getGeminiKey();
+
+        if (empty($key)) {
+            $this->json(['ok' => false, 'message' => 'لم يتم إدخال مفتاح API للاختبار.'], 400);
+            return;
+        }
+
+        try {
+            require_once __DIR__ . '/../services/AI/providers/GeminiProvider.php';
+            $provider = new GeminiProvider([
+                'api_key'  => $key,
+                'model'    => 'gemini-1.5-flash',
+                'base_url' => 'https://generativelanguage.googleapis.com/v1beta',
+                'timeout'  => 10,
+            ]);
+            $res = $provider->testConnection();
+            $this->json($res);
+        } catch (Throwable $e) {
+            $this->json(['ok' => false, 'message' => 'فشل الاختبار: ' . $e->getMessage()], 422);
         }
     }
 

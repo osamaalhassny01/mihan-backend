@@ -20,6 +20,17 @@ class AIProviderSetting extends Model
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+        // التصحيح التلقائي لأي مودل ملغي أو غير موجود واستبداله بمودل gemini-1.5-flash الرسمي
+        try {
+            $this->db->exec("UPDATE ai_provider_settings 
+                SET model = 'gemini-1.5-flash', 
+                    base_url = 'https://generativelanguage.googleapis.com/v1beta',
+                    max_tokens = 2048,
+                    timeout = 30
+                WHERE provider = 'gemini' 
+                  AND (model LIKE '%3.1%' OR model IS NULL OR model = '' OR base_url LIKE '%openai%')");
+        } catch (Throwable $e) {}
     }
 
     private function ensureLocalFallback(): void
@@ -73,6 +84,17 @@ class AIProviderSetting extends Model
     public function saveProvider(string $provider,array $data): void
     {
         $this->ensureLocalFallback();
+        if ($provider === 'gemini') {
+            if (empty($data['model']) || strpos($data['model'], '3.1') !== false) {
+                $data['model'] = 'gemini-1.5-flash';
+            }
+            if (empty($data['base_url']) || strpos($data['base_url'], 'openai') !== false) {
+                $data['base_url'] = 'https://generativelanguage.googleapis.com/v1beta';
+            }
+            if (empty($data['max_tokens'])) {
+                $data['max_tokens'] = 2048;
+            }
+        }
         $existing=$this->getProvider($provider);
         if($existing){$this->update($existing['id'],$data);}
         else {$this->insert(['provider'=>$provider]+$data);}

@@ -90,29 +90,44 @@ $operationLabels=['chat'=>'محادثة','analyze'=>'تحليل','connection_tes
         </div>
 
         <div id="apiKeyWrap" class="mb-3 mt-3">
-          <label class="form-label">API Key</label>
-          <input type="password" name="api_key" id="aiApiKey" class="form-control" placeholder="اتركه فارغًا للاحتفاظ بالمفتاح الحالي" autocomplete="new-password">
-          <div class="form-text">لا يظهر المفتاح المحفوظ ولا يتم إرساله ضمن بيانات العرض.</div>
+          <label class="form-label fw-bold">API Key</label>
+          <input type="password" name="api_key" id="aiApiKey" class="form-control" placeholder="أدخل المفتاح هنا (اتركه فارغاً للاحتفاظ بالمفتاح الحالي)" autocomplete="new-password">
+          <div class="form-text">يتم تشفير المفتاح وتخزينه بأمان ولا يظهر للمتصفح.</div>
         </div>
 
-        <div class="row g-3">
-          <div class="col-md-6">
-            <label class="form-label">Model ID</label>
-            <input name="model" id="aiModel" class="form-control" list="geminiModelsList" placeholder="مثال: gemini-1.5-flash">
-            <datalist id="geminiModelsList">
-              <option value="gemini-1.5-flash">Gemini 1.5 Flash (سريع واقتصادي وموصى به)</option>
-              <option value="gemini-2.0-flash">Gemini 2.0 Flash (الجيل الأحدث)</option>
-              <option value="gemini-1.5-pro">Gemini 1.5 Pro (للمهام المعقدة والتحليل العميق)</option>
-            </datalist>
+        <div id="geminiNotice" class="alert alert-info py-2 px-3 mb-3 d-none">
+          <div class="d-flex align-items-center gap-2">
+            <i class="fa-solid fa-circle-check text-info fs-5"></i>
+            <div>
+              <strong>سيرفر Google Gemini 1.5 Flash الرسمي</strong>
+              <div class="small">النموذج والتوكن وإعدادات الاتصال مضبوطة ومثبتة تلقائياً بأفضل سرعة ودقة — يكفي فقط إدخال الـ API Key.</div>
+            </div>
           </div>
-          <div class="col-md-6"><label class="form-label">Base URL</label><input name="base_url" id="aiBaseUrl" class="form-control" placeholder="https://generativelanguage.googleapis.com/v1beta"></div>
         </div>
-        <div class="row g-3 mt-1">
-          <div class="col-md-4"><label class="form-label">Temperature</label><input type="number" step="0.1" min="0" max="2" name="temperature" id="aiTemperature" class="form-control"></div>
-          <div class="col-md-4"><label class="form-label">Max Tokens</label><input type="number" min="100" max="8000" name="max_tokens" id="aiMaxTokens" class="form-control"></div>
-          <div class="col-md-4"><label class="form-label">Timeout</label><input type="number" min="5" max="60" name="timeout" id="aiTimeout" class="form-control"></div>
-        </div>
-        <div class="mt-3"><label class="form-label">System Prompt</label><textarea name="system_prompt" id="aiSystemPrompt" class="form-control" rows="4" placeholder="تعليمات عامة للمساعد..."></textarea></div>
+
+        <details class="mt-2 mb-3 border rounded p-3 bg-light" id="advancedAiSettings">
+          <summary class="fw-semibold text-secondary" style="cursor: pointer;">
+            <i class="fa-solid fa-sliders me-1"></i> إعدادات متقدمة (اختياري للمطورين فقط — غير مطلوب تعديلها)
+          </summary>
+          <div class="row g-3 mt-1">
+            <div class="col-md-6">
+              <label class="form-label">Model ID</label>
+              <input name="model" id="aiModel" class="form-control" list="geminiModelsList" placeholder="gemini-1.5-flash">
+              <datalist id="geminiModelsList">
+                <option value="gemini-1.5-flash">Gemini 1.5 Flash (سريع واقتصادي وموصى به)</option>
+                <option value="gemini-2.0-flash">Gemini 2.0 Flash (الجيل الأحدث)</option>
+                <option value="gemini-1.5-pro">Gemini 1.5 Pro (للمهام المعقدة)</option>
+              </datalist>
+            </div>
+            <div class="col-md-6"><label class="form-label">Base URL</label><input name="base_url" id="aiBaseUrl" class="form-control" placeholder="https://generativelanguage.googleapis.com/v1beta"></div>
+          </div>
+          <div class="row g-3 mt-1">
+            <div class="col-md-4"><label class="form-label">Temperature</label><input type="number" step="0.1" min="0" max="2" name="temperature" id="aiTemperature" class="form-control"></div>
+            <div class="col-md-4"><label class="form-label">Max Tokens</label><input type="number" min="100" max="8000" name="max_tokens" id="aiMaxTokens" class="form-control"></div>
+            <div class="col-md-4"><label class="form-label">Timeout</label><input type="number" min="5" max="60" name="timeout" id="aiTimeout" class="form-control"></div>
+          </div>
+          <div class="mt-3"><label class="form-label">System Prompt</label><textarea name="system_prompt" id="aiSystemPrompt" class="form-control" rows="3" placeholder="تعليمات إضافية اختيارية..."></textarea></div>
+        </details>
         <div class="d-flex flex-wrap gap-2 mt-4">
           <button class="btn btn-primary" type="submit"><i class="fa-solid fa-floppy-disk"></i> حفظ إعدادات النموذج</button>
           <button type="button" class="btn btn-outline-success" id="testAi"><i class="fa-solid fa-plug"></i> اختبار النموذج المحدد</button>
@@ -196,8 +211,37 @@ $operationLabels=['chat'=>'محادثة','analyze'=>'تحليل','connection_tes
 
 <script>
 const AI_PROVIDERS = <?= json_encode($providerData, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES) ?>;
-const form=document.getElementById('aiProviderForm'), provider=document.getElementById('aiProvider'), apiKeyWrap=document.getElementById('apiKeyWrap'), apiKey=document.getElementById('aiApiKey'), enabled=document.getElementById('aiEnabled'), model=document.getElementById('aiModel'), baseUrl=document.getElementById('aiBaseUrl'), temperature=document.getElementById('aiTemperature'), maxTokens=document.getElementById('aiMaxTokens'), timeout=document.getElementById('aiTimeout'), systemPrompt=document.getElementById('aiSystemPrompt'), activeBadge=document.getElementById('activeBadge'), result=document.getElementById('testResult');
-function loadProvider(key){const s=AI_PROVIDERS[key]||{};model.value=s.model||'';baseUrl.value=s.base_url||'';temperature.value=s.temperature||'0.2';maxTokens.value=s.max_tokens||'700';timeout.value=s.timeout||'20';systemPrompt.value=s.system_prompt||'';enabled.checked=Number(s.is_enabled||0)===1;apiKey.value='';const local=key==='local';apiKeyWrap.classList.toggle('d-none',local);model.closest('.col-md-6').classList.toggle('d-none',local);baseUrl.closest('.col-md-6').classList.toggle('d-none',local);activeBadge.classList.toggle('d-none',Number(s.is_default||0)!==1);result.textContent='';result.className='small mt-2';}
+const form=document.getElementById('aiProviderForm'), provider=document.getElementById('aiProvider'), apiKeyWrap=document.getElementById('apiKeyWrap'), apiKey=document.getElementById('aiApiKey'), enabled=document.getElementById('aiEnabled'), model=document.getElementById('aiModel'), baseUrl=document.getElementById('aiBaseUrl'), temperature=document.getElementById('aiTemperature'), maxTokens=document.getElementById('aiMaxTokens'), timeout=document.getElementById('aiTimeout'), systemPrompt=document.getElementById('aiSystemPrompt'), activeBadge=document.getElementById('activeBadge'), result=document.getElementById('testResult'), geminiNotice=document.getElementById('geminiNotice'), advancedSection=document.getElementById('advancedAiSettings');
+function loadProvider(key){
+  const s=AI_PROVIDERS[key]||{};
+  const isGemini = key === 'gemini';
+  const isLocal = key === 'local';
+
+  if (isGemini) {
+    model.value = (s.model && !s.model.includes('3.1')) ? s.model : 'gemini-1.5-flash';
+    baseUrl.value = (s.base_url && !s.base_url.includes('openai')) ? s.base_url : 'https://generativelanguage.googleapis.com/v1beta';
+    maxTokens.value = s.max_tokens || '2048';
+    temperature.value = s.temperature || '0.4';
+    timeout.value = s.timeout || '30';
+  } else {
+    model.value = s.model || '';
+    baseUrl.value = s.base_url || '';
+    temperature.value = s.temperature || '0.2';
+    maxTokens.value = s.max_tokens || '700';
+    timeout.value = s.timeout || '20';
+  }
+
+  systemPrompt.value = s.system_prompt || '';
+  enabled.checked = Number(s.is_enabled || 0) === 1;
+  apiKey.value = '';
+
+  apiKeyWrap.classList.toggle('d-none', isLocal);
+  if (geminiNotice) geminiNotice.classList.toggle('d-none', !isGemini);
+  if (advancedSection) advancedSection.classList.toggle('d-none', isLocal);
+  activeBadge.classList.toggle('d-none', Number(s.is_default || 0) !== 1);
+  result.textContent = '';
+  result.className = 'small mt-2';
+}
 provider.addEventListener('change',()=>loadProvider(provider.value));loadProvider(provider.value);
 
 document.getElementById('testAi').addEventListener('click',async()=>{result.textContent='جارٍ الاختبار...';result.className='small mt-2 text-muted';const body=new URLSearchParams(new FormData(form));try{const r=await fetch('<?= url('/admin/ai/test') ?>',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded','X-Requested-With':'XMLHttpRequest'},body});const j=await r.json();result.textContent=(j.ok?'✓ ':'✕ ')+(j.message||'');result.className='small mt-2 '+(j.ok?'text-success':'text-danger');}catch(e){result.textContent='تعذر إكمال الاختبار.';result.className='small mt-2 text-danger';}});

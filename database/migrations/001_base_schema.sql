@@ -343,7 +343,7 @@ CREATE TABLE IF NOT EXISTS ai_logs (
 ) ENGINE=InnoDB;
 
 INSERT IGNORE INTO ai_provider_settings(provider,model,base_url,is_enabled,is_default) VALUES
-('local',NULL,NULL,1,0),('gemini','gemini-3.1-flash-lite','https://generativelanguage.googleapis.com/v1beta',0,0),('openai','gpt-4o-mini','https://api.openai.com/v1',0,0),('groq',NULL,'https://api.groq.com/openai/v1',0,0),('openai_compatible',NULL,NULL,0,0);
+('local',NULL,NULL,1,0),('gemini','gemini-1.5-flash','https://generativelanguage.googleapis.com/v1beta',0,0),('openai','gpt-4o-mini','https://api.openai.com/v1',0,0),('groq',NULL,'https://api.groq.com/openai/v1',0,0),('openai_compatible',NULL,NULL,0,0);
 
 -- ---------------------------------------------------------
 -- System
