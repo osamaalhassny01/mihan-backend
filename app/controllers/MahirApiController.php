@@ -10,6 +10,11 @@ require_once __DIR__ . '/../services/MahirAIService.php';
  */
 class MahirApiController extends Controller
 {
+    public function __construct()
+    {
+        MahirProfession::ensureTablesExist();
+    }
+
     // ============================
     // Helper: JSON Responses
     // ============================
@@ -63,9 +68,13 @@ class MahirApiController extends Controller
     public function professions(): void
     {
         $this->handleOptions();
-        $model = new MahirProfession();
-        $grouped = $model->byCategory();
-        $this->ok(['categories' => $grouped]);
+        try {
+            $model = new MahirProfession();
+            $grouped = $model->byCategory();
+            $this->ok(['categories' => $grouped]);
+        } catch (Throwable $e) {
+            $this->fail('تعذر جلب المهن: ' . $e->getMessage(), 500);
+        }
     }
 
     // ============================
@@ -76,38 +85,42 @@ class MahirApiController extends Controller
     public function startSession(): void
     {
         $this->handleOptions();
-        $payload = $this->payload();
-        $professionId = isset($payload['profession_id']) ? (int)$payload['profession_id'] : null;
-        $userId = null; // يمكن ربطه بـ Auth لاحقاً
+        try {
+            $payload = $this->payload();
+            $professionId = isset($payload['profession_id']) ? (int)$payload['profession_id'] : null;
+            $userId = null;
 
-        // التحقق من المهنة إذا أُرسلت
-        $profession = null;
-        if ($professionId) {
-            $pm = new MahirProfession();
-            $profession = $pm->findById($professionId);
-            if (!$profession) {
-                $this->fail('المهنة غير موجودة أو غير متاحة.');
+            // التحقق من المهنة إذا أُرسلت
+            $profession = null;
+            if ($professionId) {
+                $pm = new MahirProfession();
+                $profession = $pm->findById($professionId);
+                if (!$profession) {
+                    $this->fail('المهنة غير موجودة أو غير متاحة.', 400);
+                }
             }
+
+            $sm = new MahirSession();
+            $session = $sm->createSession($userId, $professionId);
+
+            $icon = !empty($profession['icon']) ? $profession['icon'] . ' ' : '';
+            $welcome = $profession
+                ? "أهلاً! أنا ماهر 👋 سأكون معلمك في {$icon}{$profession['name']}.\n\nأخبرني ما الذي تريد تعلمه، وسأشرح لك خطوة بخطوة!"
+                : "أهلاً! أنا ماهر 👋 معلمك الذكي للمهن العملية.\n\nاختر المهنة التي تريد تعلمها، أو أخبرني مباشرة ما الذي تستفسر عنه!";
+
+            $sm->appendMessage((int)$session['id'], [
+                ['role' => 'assistant', 'content' => $welcome]
+            ]);
+
+            $this->ok([
+                'session_token'   => $session['session_token'],
+                'session_id'      => $session['id'],
+                'profession'      => $profession,
+                'welcome_message' => $welcome,
+            ]);
+        } catch (Throwable $e) {
+            $this->fail('تعذر بدء الجلسة: ' . $e->getMessage(), 500);
         }
-
-        $sm = new MahirSession();
-        $session = $sm->createSession($userId, $professionId);
-
-        // رسالة ترحيب من ماهر
-        $welcome = $profession
-            ? "أهلاً! أنا ماهر 👋 سأكون معلمك في {$profession['icon']} {$profession['name']}.\n\nأخبرني ما الذي تريد تعلمه، وسأشرح لك خطوة بخطوة!"
-            : "أهلاً! أنا ماهر 👋 معلمك الذكي للمهن العملية.\n\nاختر المهنة التي تريد تعلمها، أو أخبرني مباشرة ما الذي يستفسر عنه!";
-
-        $sm->appendMessage((int)$session['id'], [
-            ['role' => 'assistant', 'content' => $welcome]
-        ]);
-
-        $this->ok([
-            'session_token'   => $session['session_token'],
-            'session_id'      => $session['id'],
-            'profession'      => $profession,
-            'welcome_message' => $welcome,
-        ]);
     }
 
     // ============================
@@ -123,50 +136,54 @@ class MahirApiController extends Controller
             $this->fail('يجب استخدام POST.', 405);
         }
 
-        $payload = $this->payload();
-        $token   = trim((string)($payload['session_token'] ?? ''));
-        $message = trim((string)($payload['message'] ?? ''));
+        try {
+            $payload = $this->payload();
+            $token   = trim((string)($payload['session_token'] ?? ''));
+            $message = trim((string)($payload['message'] ?? ''));
 
-        if (empty($token)) {
-            $this->fail('session_token مطلوب.');
-        }
-        if (empty($message)) {
-            $this->fail('الرسالة لا يمكن أن تكون فارغة.');
-        }
-        if (mb_strlen($message) > 1000) {
-            $this->fail('الرسالة طويلة جداً (الحد الأقصى 1000 حرف).');
-        }
+            if (empty($token)) {
+                $this->fail('session_token مطلوب.', 400);
+            }
+            if (empty($message)) {
+                $this->fail('الرسالة لا يمكن أن تكون فارغة.', 400);
+            }
+            if (mb_strlen($message) > 1000) {
+                $this->fail('الرسالة طويلة جداً (الحد الأقصى 1000 حرف).', 400);
+            }
 
-        // جلب الجلسة
-        $sm = new MahirSession();
-        $session = $sm->findByToken($token);
-        if (!$session) {
-            $this->fail('الجلسة غير موجودة أو انتهت صلاحيتها.', 404);
+            // جلب الجلسة
+            $sm = new MahirSession();
+            $session = $sm->findByToken($token);
+            if (!$session) {
+                $this->fail('الجلسة غير موجودة أو انتهت صلاحيتها.', 404);
+            }
+
+            // جلب المهنة إن وجدت
+            $profession = null;
+            if ($session['profession_id']) {
+                $pm = new MahirProfession();
+                $profession = $pm->findById((int)$session['profession_id']);
+            }
+
+            // إرسال للذكاء الاصطناعي
+            $result = MahirAIService::chat(
+                $message,
+                (int)$session['id'],
+                $profession,
+                $session['user_id'] ? (int)$session['user_id'] : null
+            );
+
+            if (!$result['success']) {
+                $this->fail($result['message'], 500);
+            }
+
+            $this->ok([
+                'reply'    => $result['message'],
+                'provider' => $result['provider'] ?? 'gemini',
+            ]);
+        } catch (Throwable $e) {
+            $this->fail('تعذر إرسال الرسالة: ' . $e->getMessage(), 500);
         }
-
-        // جلب المهنة إن وجدت
-        $profession = null;
-        if ($session['profession_id']) {
-            $pm = new MahirProfession();
-            $profession = $pm->findById((int)$session['profession_id']);
-        }
-
-        // إرسال للذكاء الاصطناعي
-        $result = MahirAIService::chat(
-            $message,
-            (int)$session['id'],
-            $profession,
-            $session['user_id'] ? (int)$session['user_id'] : null
-        );
-
-        if (!$result['success']) {
-            $this->fail($result['message'], 500);
-        }
-
-        $this->ok([
-            'reply'    => $result['message'],
-            'provider' => $result['provider'] ?? 'gemini',
-        ]);
     }
 
     // ============================
@@ -176,13 +193,17 @@ class MahirApiController extends Controller
     public function history(string $token): void
     {
         $this->handleOptions();
-        $sm = new MahirSession();
-        $session = $sm->findByToken($token);
-        if (!$session) {
-            $this->fail('الجلسة غير موجودة.', 404);
+        try {
+            $sm = new MahirSession();
+            $session = $sm->findByToken($token);
+            if (!$session) {
+                $this->fail('الجلسة غير موجودة.', 404);
+            }
+            $messages = $sm->getMessages((int)$session['id']);
+            $this->ok(['messages' => $messages, 'count' => count($messages)]);
+        } catch (Throwable $e) {
+            $this->fail('تعذر جلب السجل: ' . $e->getMessage(), 500);
         }
-        $messages = $sm->getMessages((int)$session['id']);
-        $this->ok(['messages' => $messages, 'count' => count($messages)]);
     }
 
     // ============================
@@ -192,11 +213,15 @@ class MahirApiController extends Controller
     public function professionDetail(int $id): void
     {
         $this->handleOptions();
-        $pm = new MahirProfession();
-        $profession = $pm->findById($id);
-        if (!$profession) {
-            $this->fail('المهنة غير موجودة.', 404);
+        try {
+            $pm = new MahirProfession();
+            $profession = $pm->findById($id);
+            if (!$profession) {
+                $this->fail('المهنة غير موجودة.', 404);
+            }
+            $this->ok(['profession' => $profession]);
+        } catch (Throwable $e) {
+            $this->fail('تعذر جلب تفاصيل المهنة: ' . $e->getMessage(), 500);
         }
-        $this->ok(['profession' => $profession]);
     }
 }

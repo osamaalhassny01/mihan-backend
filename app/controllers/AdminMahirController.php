@@ -8,20 +8,30 @@ class AdminMahirController extends Controller
     public function __construct()
     {
         Auth::requireRole('admin');
+        MahirProfession::ensureTablesExist();
     }
 
     // صفحة إدارة ماهر AI
     public function index(): void
     {
-        $model = new MahirProfession();
-        $professions = $model->allForAdmin();
-        $stats = MahirAIService::getStats();
+        try {
+            $model = new MahirProfession();
+            $professions = $model->allForAdmin();
+            $stats = MahirAIService::getStats();
 
-        $this->view('admin/mahir/index', [
-            'title'       => 'إدارة ماهر AI',
-            'professions' => $professions,
-            'stats'       => $stats,
-        ], 'dashboard');
+            $this->view('admin/mahir/index', [
+                'title'       => 'إدارة ماهر AI',
+                'professions' => $professions,
+                'stats'       => $stats,
+            ], 'dashboard');
+        } catch (Throwable $e) {
+            Session::flash('error', 'حدث خطأ في تحميل بيانات ماهر AI: ' . $e->getMessage());
+            $this->view('admin/mahir/index', [
+                'title'       => 'إدارة ماهر AI',
+                'professions' => [],
+                'stats'       => ['total_sessions' => 0, 'total_messages' => 0, 'today_messages' => 0, 'top_professions' => []],
+            ], 'dashboard');
+        }
     }
 
     // إضافة مهنة جديدة
@@ -31,12 +41,12 @@ class AdminMahirController extends Controller
         $model = new MahirProfession();
         try {
             $model->insert([
-                'name'                => trim($this->input('name', '')),
-                'name_en'             => trim($this->input('name_en', '')) ?: null,
-                'category'            => trim($this->input('category', '')),
-                'icon'                => trim($this->input('icon', '🔧')),
-                'description'         => trim($this->input('description', '')) ?: null,
-                'system_prompt_extra' => trim($this->input('system_prompt_extra', '')) ?: null,
+                'name'                => trim((string)$this->input('name', '')),
+                'name_en'             => trim((string)$this->input('name_en', '')) ?: null,
+                'category'            => trim((string)$this->input('category', '')),
+                'icon'                => trim((string)$this->input('icon', '🔧')),
+                'description'         => trim((string)$this->input('description', '')) ?: null,
+                'system_prompt_extra' => trim((string)$this->input('system_prompt_extra', '')) ?: null,
                 'is_active'           => $this->input('is_active') === '1' ? 1 : 0,
                 'sort_order'          => (int)$this->input('sort_order', 0),
             ]);
@@ -54,12 +64,12 @@ class AdminMahirController extends Controller
         $model = new MahirProfession();
         try {
             $model->update($id, [
-                'name'                => trim($this->input('name', '')),
-                'name_en'             => trim($this->input('name_en', '')) ?: null,
-                'category'            => trim($this->input('category', '')),
-                'icon'                => trim($this->input('icon', '🔧')),
-                'description'         => trim($this->input('description', '')) ?: null,
-                'system_prompt_extra' => trim($this->input('system_prompt_extra', '')) ?: null,
+                'name'                => trim((string)$this->input('name', '')),
+                'name_en'             => trim((string)$this->input('name_en', '')) ?: null,
+                'category'            => trim((string)$this->input('category', '')),
+                'icon'                => trim((string)$this->input('icon', '🔧')),
+                'description'         => trim((string)$this->input('description', '')) ?: null,
+                'system_prompt_extra' => trim((string)$this->input('system_prompt_extra', '')) ?: null,
                 'is_active'           => $this->input('is_active') === '1' ? 1 : 0,
                 'sort_order'          => (int)$this->input('sort_order', 0),
             ]);
@@ -75,9 +85,14 @@ class AdminMahirController extends Controller
     {
         $this->verifyCsrfOrFail();
         $model = new MahirProfession();
-        $row = $model->find($id);
-        if ($row) {
-            $model->update($id, ['is_active' => $row['is_active'] ? 0 : 1]);
+        try {
+            $row = $model->find($id);
+            if ($row) {
+                $model->update($id, ['is_active' => $row['is_active'] ? 0 : 1]);
+                Session::flash('success', 'تم تحديث حالة المهنة.');
+            }
+        } catch (Throwable $e) {
+            Session::flash('error', 'فشل تغيير الحالة: ' . $e->getMessage());
         }
         $this->redirect('/admin/mahir');
     }
@@ -91,7 +106,7 @@ class AdminMahirController extends Controller
             $model->delete($id);
             Session::flash('success', 'تم حذف المهنة.');
         } catch (Throwable $e) {
-            Session::flash('error', 'فشل الحذف.');
+            Session::flash('error', 'فشل الحذف: ' . $e->getMessage());
         }
         $this->redirect('/admin/mahir');
     }
