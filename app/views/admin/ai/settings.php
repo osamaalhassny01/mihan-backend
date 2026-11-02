@@ -112,10 +112,10 @@ $operationLabels=['chat'=>'محادثة','analyze'=>'تحليل','connection_tes
           <div class="row g-3 mt-1">
             <div class="col-md-6">
               <label class="form-label">Model ID</label>
-              <input name="model" id="aiModel" class="form-control" list="geminiModelsList" placeholder="gemini-2.5-flash">
+              <input name="model" id="aiModel" class="form-control" list="geminiModelsList" placeholder="gemini-3.6-flash">
               <datalist id="geminiModelsList">
-                <option value="gemini-2.5-flash">Gemini 2.5 Flash (سريع وموصى به)</option>
-                <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
+                <option value="gemini-3.6-flash">Gemini 3.6 Flash (سريع ومستقر وموصى به)</option>
+                <option value="gemini-3.5-flash">Gemini 3.5 Flash</option>
                 <option value="gemini-flash-latest">Gemini Flash Latest</option>
               </datalist>
             </div>
@@ -218,7 +218,7 @@ function loadProvider(key){
   const isLocal = key === 'local';
 
   if (isGemini) {
-    model.value = (s.model && !s.model.includes('3.1') && s.model !== 'gemini-1.5-flash') ? s.model : 'gemini-2.5-flash';
+    model.value = (s.model && !s.model.includes('3.1') && !s.model.includes('1.') && !s.model.includes('2.')) ? s.model : 'gemini-3.6-flash';
     baseUrl.value = (s.base_url && !s.base_url.includes('openai')) ? s.base_url : 'https://generativelanguage.googleapis.com/v1beta';
     maxTokens.value = s.max_tokens || '2048';
     temperature.value = s.temperature || '0.4';

@@ -20,11 +20,12 @@ class AdminMahirController extends Controller
             $stats = MahirAIService::getStats();
             $isConfigured = MahirAIService::isConfigured();
 
-            $savedModel = 'gemini-2.5-flash';
+            $savedModel = 'gemini-3.6-flash';
             try {
                 $db = Database::getInstance();
                 $saved = $db->query("SELECT model FROM ai_provider_settings WHERE provider = 'gemini' LIMIT 1")->fetchColumn();
-                if (!empty($saved) && $saved !== 'gemini-1.5-flash' && strpos($saved, '3.1') === false) {
+                $deprecated = ['gemini-1.5-flash', 'gemini-2.5-flash', 'gemini-2.0-flash'];
+                if (!empty($saved) && !in_array($saved, $deprecated, true) && strpos($saved, '3.1') === false) {
                     $savedModel = trim((string)$saved);
                 }
             } catch (Throwable $e) {}
@@ -43,7 +44,7 @@ class AdminMahirController extends Controller
                 'professions'       => [],
                 'stats'             => ['total_sessions' => 0, 'total_messages' => 0, 'today_messages' => 0, 'top_professions' => []],
                 'gemini_configured' => false,
-                'gemini_model'      => 'gemini-2.5-flash',
+                'gemini_model'      => 'gemini-3.6-flash',
             ], 'dashboard');
         }
     }
@@ -69,7 +70,7 @@ class AdminMahirController extends Controller
 
             $m = new AIProviderSetting();
             $data = [
-                'model'             => $detectedModel ?: 'gemini-2.5-flash',
+                'model'             => $detectedModel ?: 'gemini-3.6-flash',
                 'api_key_encrypted' => AIEncryption::encrypt($key),
                 'base_url'          => 'https://generativelanguage.googleapis.com/v1beta',
                 'temperature'       => 0.40,
@@ -84,7 +85,7 @@ class AdminMahirController extends Controller
             // اختبار فوري للمفتاح وتوليد محتوى حقيقي للتأكد 100%
             $provider = new GeminiProvider([
                 'api_key'  => $key,
-                'model'    => $detectedModel ?: 'gemini-2.5-flash',
+                'model'    => $detectedModel ?: 'gemini-3.6-flash',
                 'base_url' => 'https://generativelanguage.googleapis.com/v1beta',
                 'timeout'  => 12,
             ]);
@@ -119,7 +120,7 @@ class AdminMahirController extends Controller
             $detected = GeminiProvider::detectSupportedModel($key);
             $provider = new GeminiProvider([
                 'api_key'  => $key,
-                'model'    => $detected ?: 'gemini-2.5-flash',
+                'model'    => $detected ?: 'gemini-3.6-flash',
                 'base_url' => 'https://generativelanguage.googleapis.com/v1beta',
                 'timeout'  => 12,
             ]);

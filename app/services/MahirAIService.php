@@ -117,13 +117,14 @@ PROMPT;
 
         $startTime = microtime(true);
 
-        // جلب النموذج المحفوظ أو استخدام النموذج المعتمد
-        $model = 'gemini-2.5-flash';
+        // جلب النموذج المحفوظ أو استخدام النموذج المستقر gemini-3.6-flash
+        $model = 'gemini-3.6-flash';
         try {
             $db = Database::getInstance();
             $stmt = $db->query("SELECT model FROM ai_provider_settings WHERE provider = 'gemini' LIMIT 1");
             $saved = $stmt->fetchColumn();
-            if (!empty($saved) && $saved !== 'gemini-1.5-flash' && strpos($saved, '3.1') === false) {
+            $deprecated = ['gemini-1.5-flash', 'gemini-2.5-flash', 'gemini-2.0-flash'];
+            if (!empty($saved) && !in_array($saved, $deprecated, true) && strpos($saved, '3.1') === false) {
                 $model = trim((string)$saved);
             }
         } catch (Throwable $e) {}

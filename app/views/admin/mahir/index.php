@@ -28,7 +28,7 @@ $categories = [
                         <span>ربط سيرفر الذكاء الاصطناعي (Google Gemini)</span>
                     </h5>
                     <div class="text-muted small">
-                        مودل التشغيل المعتمد: <code class="fw-bold text-primary"><?= htmlspecialchars($gemini_model ?? 'gemini-2.5-flash') ?></code> (يتم كشفه وضبطه تلقائياً من سيرفر Google الرسمي بدون الحاجة لأي إعدادات مودل أو توكن).
+                        مودل التشغيل المعتمد: <code class="fw-bold text-primary"><?= htmlspecialchars($gemini_model ?? 'gemini-3.6-flash') ?></code> (يتم كشفه وضبطه تلقائياً من سيرفر Google الرسمي بدون الحاجة لأي إعدادات مودل أو توكن).
                     </div>
                 </div>
                 <div>

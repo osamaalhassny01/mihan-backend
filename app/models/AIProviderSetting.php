@@ -21,15 +21,15 @@ class AIProviderSetting extends Model
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
-        // التصحيح التلقائي لأي مودل ملغي أو غير موجود واستبداله بمودل gemini-2.5-flash الفعال
+        // التصحيح التلقائي لأي مودل ملغي أو غير موجود واستبداله بمودل gemini-3.6-flash الرسمي
         try {
             $this->db->exec("UPDATE ai_provider_settings 
-                SET model = 'gemini-2.5-flash', 
+                SET model = 'gemini-3.6-flash', 
                     base_url = 'https://generativelanguage.googleapis.com/v1beta',
                     max_tokens = 2048,
                     timeout = 30
                 WHERE provider = 'gemini' 
-                  AND (model LIKE '%3.1%' OR model = 'gemini-1.5-flash' OR model IS NULL OR model = '' OR base_url LIKE '%openai%')");
+                  AND (model LIKE '%3.1%' OR model LIKE '%1.%' OR model LIKE '%2.%' OR model IS NULL OR model = '' OR base_url LIKE '%openai%')");
         } catch (Throwable $e) {}
     }
 
@@ -85,8 +85,8 @@ class AIProviderSetting extends Model
     {
         $this->ensureLocalFallback();
         if ($provider === 'gemini') {
-            if (empty($data['model']) || $data['model'] === 'gemini-1.5-flash' || strpos($data['model'], '3.1') !== false) {
-                $data['model'] = 'gemini-2.5-flash';
+            if (empty($data['model']) || strpos($data['model'], '1.') !== false || strpos($data['model'], '2.') !== false || strpos($data['model'], '3.1') !== false) {
+                $data['model'] = 'gemini-3.6-flash';
             }
             if (empty($data['base_url']) || strpos($data['base_url'], 'openai') !== false) {
                 $data['base_url'] = 'https://generativelanguage.googleapis.com/v1beta';

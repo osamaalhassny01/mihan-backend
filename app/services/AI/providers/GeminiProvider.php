@@ -21,8 +21,8 @@ class GeminiProvider implements AIProviderInterface
     {
         $this->key = trim((string)($s['api_key'] ?? ''));
         $rawModel = trim((string)($s['model'] ?? ''));
-        if ($rawModel === '' || $rawModel === 'gemini-1.5-flash' || strpos($rawModel, '3.1') !== false) {
-            $rawModel = 'gemini-2.5-flash';
+        if ($rawModel === '' || strpos($rawModel, '1.') !== false || strpos($rawModel, '2.') !== false || strpos($rawModel, '3.1') !== false || $rawModel === 'gemini-3.8-flash') {
+            $rawModel = 'gemini-3.6-flash';
         }
         $rawModel = preg_replace('#^models/#', '', $rawModel);
         $this->model = $rawModel;
@@ -168,13 +168,34 @@ class GeminiProvider implements AIProviderInterface
             throw new RuntimeException('استجابة Gemini غير صالحة.');
         }
 
-        if ($status === 404 && empty($options['__is_retry'])) {
-            // كشف النموذج النشط لحساب العميل تلقائياً عند تلقي 404
-            $detected = self::detectSupportedModel($this->key, $this->baseUrl);
-            if ($detected && $detected !== $this->model) {
-                $this->model = $detected;
-                self::persistActiveModel($detected);
-                $options['__is_retry'] = true;
+        // سلسلة النماذج النشطة للتحويل التلقائي في حال ضغط السيرفر (503) أو الترقية (404)
+        $modelCascade = [
+            'gemini-3.6-flash',
+            'gemini-3.5-flash',
+            'gemini-3.5-flash-lite',
+            'gemini-flash-lite-latest',
+        ];
+
+        if (($status === 404 || $status === 503) && ((int)($options['__cascade_attempt'] ?? 0) < 3)) {
+            $msg = (string)($data['error']['message'] ?? '');
+            $suggested = null;
+
+            if ($status === 404 && preg_match('#use models/([a-zA-Z0-9\.\-_]+)#i', $msg, $matches)) {
+                $suggested = trim($matches[1]);
+            }
+            if (!$suggested || $suggested === $this->model) {
+                $attempt = (int)($options['__cascade_attempt'] ?? 0);
+                foreach ($modelCascade as $cand) {
+                    if ($cand !== $this->model) {
+                        $suggested = $cand;
+                        break;
+                    }
+                }
+            }
+            if ($suggested && $suggested !== $this->model) {
+                $this->model = $suggested;
+                self::persistActiveModel($suggested);
+                $options['__cascade_attempt'] = ((int)($options['__cascade_attempt'] ?? 0)) + 1;
                 return $this->request($messages, $options);
             }
         }
@@ -286,19 +307,18 @@ class GeminiProvider implements AIProviderInterface
                 }
             }
 
-            if ($preferred && in_array($preferred, $supported, true)) {
+            $deprecated = ['gemini-1.5-flash', 'gemini-2.5-flash', 'gemini-1.0-pro'];
+            if ($preferred && !in_array($preferred, $deprecated, true) && in_array($preferred, $supported, true)) {
                 return $preferred;
             }
 
-            // أولويات النماذج الرسمية والسريعة (Flash)
+            // أولويات النماذج الرسمية والسريعة الحديثة والمستقرة (Flash)
             $flashCandidates = [
-                'gemini-2.5-flash',
-                'gemini-2.0-flash',
-                'gemini-2.0-flash-exp',
-                'gemini-flash-latest',
-                'gemini-1.5-flash-latest',
-                'gemini-1.5-flash',
-                'gemini-pro',
+                'gemini-3.6-flash',
+                'gemini-3.5-flash',
+                'gemini-3.5-flash-lite',
+                'gemini-flash-lite-latest',
+                'gemini-3.8-flash',
             ];
             foreach ($flashCandidates as $cand) {
                 if (in_array($cand, $supported, true)) {
@@ -306,16 +326,16 @@ class GeminiProvider implements AIProviderInterface
                 }
             }
 
-            // أي نموذج يحتوي على flash
+            // أي نموذج يحتوي على flash (باستثناء القديمة)
             foreach ($supported as $sName) {
-                if (stripos($sName, 'flash') !== false) {
+                if (!in_array($sName, $deprecated, true) && stripos($sName, 'flash') !== false) {
                     return $sName;
                 }
             }
 
             // أي نموذج gemini
             foreach ($supported as $sName) {
-                if (stripos($sName, 'gemini') !== false) {
+                if (!in_array($sName, $deprecated, true) && stripos($sName, 'gemini') !== false) {
                     return $sName;
                 }
             }
@@ -325,7 +345,7 @@ class GeminiProvider implements AIProviderInterface
             }
         }
 
-        return 'gemini-2.5-flash';
+        return 'gemini-3.6-flash';
     }
 
     public static function persistActiveModel(string $modelName): void
@@ -368,7 +388,7 @@ class GeminiProvider implements AIProviderInterface
 
         // 3. محاولة توليد فعلي للتأكد 100% أن السيرفر يقبل generateContent
         try {
-            $text = $this->request([['role' => 'user', 'content' => 'قل مرحباً في كلمة واحدة']], ['max_tokens' => 10]);
+            $text = $this->request([['role' => 'user', 'content' => 'قل مرحباً']], ['max_tokens' => 100]);
             return [
                 'ok' => true,
                 'model' => $this->model,
