@@ -99,8 +99,8 @@ $operationLabels=['chat'=>'محادثة','analyze'=>'تحليل','connection_tes
           <div class="d-flex align-items-center gap-2">
             <i class="fa-solid fa-circle-check text-info fs-5"></i>
             <div>
-              <strong>سيرفر Google Gemini 1.5 Flash الرسمي</strong>
-              <div class="small">النموذج والتوكن وإعدادات الاتصال مضبوطة ومثبتة تلقائياً بأفضل سرعة ودقة — يكفي فقط إدخال الـ API Key.</div>
+              <strong>سيرفر Google Gemini الرسمي</strong>
+              <div class="small">النموذج والتوكن وإعدادات الاتصال مضبوطة ومحدثة تلقائياً — يكفي فقط إدخال الـ API Key.</div>
             </div>
           </div>
         </div>
@@ -112,11 +112,11 @@ $operationLabels=['chat'=>'محادثة','analyze'=>'تحليل','connection_tes
           <div class="row g-3 mt-1">
             <div class="col-md-6">
               <label class="form-label">Model ID</label>
-              <input name="model" id="aiModel" class="form-control" list="geminiModelsList" placeholder="gemini-1.5-flash">
+              <input name="model" id="aiModel" class="form-control" list="geminiModelsList" placeholder="gemini-2.5-flash">
               <datalist id="geminiModelsList">
-                <option value="gemini-1.5-flash">Gemini 1.5 Flash (سريع واقتصادي وموصى به)</option>
-                <option value="gemini-2.0-flash">Gemini 2.0 Flash (الجيل الأحدث)</option>
-                <option value="gemini-1.5-pro">Gemini 1.5 Pro (للمهام المعقدة)</option>
+                <option value="gemini-2.5-flash">Gemini 2.5 Flash (سريع وموصى به)</option>
+                <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
+                <option value="gemini-flash-latest">Gemini Flash Latest</option>
               </datalist>
             </div>
             <div class="col-md-6"><label class="form-label">Base URL</label><input name="base_url" id="aiBaseUrl" class="form-control" placeholder="https://generativelanguage.googleapis.com/v1beta"></div>
@@ -218,7 +218,7 @@ function loadProvider(key){
   const isLocal = key === 'local';
 
   if (isGemini) {
-    model.value = (s.model && !s.model.includes('3.1')) ? s.model : 'gemini-1.5-flash';
+    model.value = (s.model && !s.model.includes('3.1') && s.model !== 'gemini-1.5-flash') ? s.model : 'gemini-2.5-flash';
     baseUrl.value = (s.base_url && !s.base_url.includes('openai')) ? s.base_url : 'https://generativelanguage.googleapis.com/v1beta';
     maxTokens.value = s.max_tokens || '2048';
     temperature.value = s.temperature || '0.4';

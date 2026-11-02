@@ -21,8 +21,8 @@ class GeminiProvider implements AIProviderInterface
     {
         $this->key = trim((string)($s['api_key'] ?? ''));
         $rawModel = trim((string)($s['model'] ?? ''));
-        if ($rawModel === '' || strpos($rawModel, '3.1') !== false || strpos($rawModel, '2.5') !== false) {
-            $rawModel = 'gemini-1.5-flash';
+        if ($rawModel === '' || $rawModel === 'gemini-1.5-flash' || strpos($rawModel, '3.1') !== false) {
+            $rawModel = 'gemini-2.5-flash';
         }
         $rawModel = preg_replace('#^models/#', '', $rawModel);
         $this->model = $rawModel;
@@ -168,10 +168,15 @@ class GeminiProvider implements AIProviderInterface
             throw new RuntimeException('استجابة Gemini غير صالحة.');
         }
 
-        if ($status === 404 && $this->model !== 'gemini-1.5-flash') {
-            // المحاولة التلقائية بنموذج gemini-1.5-flash القياسي في حال كان اسم النموذج السابق غير مدعوم
-            $this->model = 'gemini-1.5-flash';
-            return $this->request($messages, $options);
+        if ($status === 404 && empty($options['__is_retry'])) {
+            // كشف النموذج النشط لحساب العميل تلقائياً عند تلقي 404
+            $detected = self::detectSupportedModel($this->key, $this->baseUrl);
+            if ($detected && $detected !== $this->model) {
+                $this->model = $detected;
+                self::persistActiveModel($detected);
+                $options['__is_retry'] = true;
+                return $this->request($messages, $options);
+            }
         }
 
         if ($status < 200 || $status >= 300) {
@@ -257,9 +262,84 @@ class GeminiProvider implements AIProviderInterface
         ];
     }
 
+    public static function detectSupportedModel(string $key, string $baseUrl = 'https://generativelanguage.googleapis.com/v1beta', ?string $preferred = null): string
+    {
+        $url = rtrim($baseUrl, '/') . '/models?key=' . rawurlencode($key);
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_HTTPGET => true,
+            CURLOPT_TIMEOUT => 10,
+            CURLOPT_CONNECTTIMEOUT => 5,
+        ]);
+        $body = curl_exec($ch);
+        curl_close($ch);
+
+        $data = json_decode((string)$body, true);
+        if (is_array($data) && !empty($data['models'])) {
+            $supported = [];
+            foreach ($data['models'] as $m) {
+                $methods = $m['supportedGenerationMethods'] ?? [];
+                if (in_array('generateContent', $methods, true)) {
+                    $cleanName = preg_replace('#^models/#', '', (string)$m['name']);
+                    $supported[] = $cleanName;
+                }
+            }
+
+            if ($preferred && in_array($preferred, $supported, true)) {
+                return $preferred;
+            }
+
+            // أولويات النماذج الرسمية والسريعة (Flash)
+            $flashCandidates = [
+                'gemini-2.5-flash',
+                'gemini-2.0-flash',
+                'gemini-2.0-flash-exp',
+                'gemini-flash-latest',
+                'gemini-1.5-flash-latest',
+                'gemini-1.5-flash',
+                'gemini-pro',
+            ];
+            foreach ($flashCandidates as $cand) {
+                if (in_array($cand, $supported, true)) {
+                    return $cand;
+                }
+            }
+
+            // أي نموذج يحتوي على flash
+            foreach ($supported as $sName) {
+                if (stripos($sName, 'flash') !== false) {
+                    return $sName;
+                }
+            }
+
+            // أي نموذج gemini
+            foreach ($supported as $sName) {
+                if (stripos($sName, 'gemini') !== false) {
+                    return $sName;
+                }
+            }
+
+            if (!empty($supported[0])) {
+                return $supported[0];
+            }
+        }
+
+        return 'gemini-2.5-flash';
+    }
+
+    public static function persistActiveModel(string $modelName): void
+    {
+        try {
+            $db = Database::getInstance();
+            $stmt = $db->prepare("UPDATE ai_provider_settings SET model = :m WHERE provider = 'gemini'");
+            $stmt->execute(['m' => $modelName]);
+        } catch (Throwable $e) {}
+    }
+
     public function testConnection(): array
     {
-        // 1. التحقق المباشر من المفتاح عبر نقطة نهاية النماذج الرسمية لـ Google (سريع ودون استهلاك كوتا توليد)
+        // 1. فحص المفتاح وجلب النماذج المتاحة لحساب المستخدم
         $url = $this->baseUrl . '/models?key=' . rawurlencode($this->key);
         $ch = curl_init($url);
         curl_setopt_array($ch, [
@@ -273,22 +353,27 @@ class GeminiProvider implements AIProviderInterface
         curl_close($ch);
 
         $data = json_decode((string)$body, true);
-        if ($status === 200 && is_array($data) && !empty($data['models'])) {
-            return [
-                'ok' => true,
-                'message' => 'تم التحقق من المفتاح بنجاح! الاتصال بسيرفر Google Gemini نشط 100%.'
-            ];
-        }
 
         if ($status === 400 || $status === 403) {
             $err = $data['error']['message'] ?? 'المفتاح غير صالح أو ليس لديه الصلاحيات المطلوبة في Google AI Studio.';
             return ['ok' => false, 'message' => $err];
         }
 
-        // 2. محاولة توليد نص قصير للتأكد
+        // 2. كشف النموذج النشط لحساب العميل والذي يدعم generateContent
+        $detected = self::detectSupportedModel($this->key, $this->baseUrl, $this->model);
+        if ($detected) {
+            $this->model = $detected;
+            self::persistActiveModel($detected);
+        }
+
+        // 3. محاولة توليد فعلي للتأكد 100% أن السيرفر يقبل generateContent
         try {
-            $text = $this->request([['role' => 'user', 'content' => 'قل مرحباً']], ['max_tokens' => 10]);
-            return ['ok' => true, 'message' => 'الاتصال ناجح: ' . trim($text)];
+            $text = $this->request([['role' => 'user', 'content' => 'قل مرحباً في كلمة واحدة']], ['max_tokens' => 10]);
+            return [
+                'ok' => true,
+                'model' => $this->model,
+                'message' => 'تم الاتصال وتوليد الرد بنجاح عبر سيرفر Google Gemini (النموذج النشط المعتمد: ' . $this->model . ').'
+            ];
         } catch (Throwable $e) {
             $err = !empty($data['error']['message']) ? $data['error']['message'] : $e->getMessage();
             return ['ok' => false, 'message' => $err];

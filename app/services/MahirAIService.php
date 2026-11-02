@@ -117,11 +117,22 @@ PROMPT;
 
         $startTime = microtime(true);
 
+        // جلب النموذج المحفوظ أو استخدام النموذج المعتمد
+        $model = 'gemini-2.5-flash';
         try {
-            // اتصال حصري ومباشر بسيرفر Google Gemini (مودل gemini-1.5-flash المعتمد)
+            $db = Database::getInstance();
+            $stmt = $db->query("SELECT model FROM ai_provider_settings WHERE provider = 'gemini' LIMIT 1");
+            $saved = $stmt->fetchColumn();
+            if (!empty($saved) && $saved !== 'gemini-1.5-flash' && strpos($saved, '3.1') === false) {
+                $model = trim((string)$saved);
+            }
+        } catch (Throwable $e) {}
+
+        try {
+            // اتصال حصري ومباشر بسيرفر Google Gemini مع الكشف التلقائي الذكي للنموذج
             $provider = new GeminiProvider([
                 'api_key'     => $geminiKey,
-                'model'       => 'gemini-1.5-flash',
+                'model'       => $model,
                 'base_url'    => 'https://generativelanguage.googleapis.com/v1beta',
                 'temperature' => 0.4,
                 'max_tokens'  => 1500,

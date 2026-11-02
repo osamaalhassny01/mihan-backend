@@ -60,8 +60,10 @@ class AdminAIController extends Controller
 
         $rawModel = trim((string)$this->input('model', ''));
         if ($provider === 'gemini') {
-            if ($rawModel === '' || strpos($rawModel, '3.1') !== false) {
-                $rawModel = 'gemini-1.5-flash';
+            if ($rawModel === '' || $rawModel === 'gemini-1.5-flash' || strpos($rawModel, '3.1') !== false) {
+                $actualKey = $key !== '' ? $key : AIEncryption::decrypt($old['api_key_encrypted'] ?? '');
+                $detected = $actualKey !== '' ? GeminiProvider::detectSupportedModel($actualKey) : 'gemini-2.5-flash';
+                $rawModel = $detected ?: 'gemini-2.5-flash';
             }
         }
 
@@ -135,8 +137,8 @@ class AdminAIController extends Controller
 
         // ضبط تلقائي لـ Gemini في حالة تركه فارغاً أو اختيار مودل قديم
         if ($provider === 'gemini') {
-            if (empty($row['model']) || strpos($row['model'], '3.1') !== false) {
-                $row['model'] = 'gemini-1.5-flash';
+            if (empty($row['model']) || $row['model'] === 'gemini-1.5-flash' || strpos($row['model'], '3.1') !== false) {
+                $row['model'] = (!empty($row['api_key']) ? GeminiProvider::detectSupportedModel($row['api_key']) : null) ?: 'gemini-2.5-flash';
             }
             if (empty($row['base_url']) || strpos($row['base_url'], 'openai') !== false) {
                 $row['base_url'] = 'https://generativelanguage.googleapis.com/v1beta';
