@@ -136,13 +136,13 @@ PROMPT;
                 'model'       => $model,
                 'base_url'    => 'https://generativelanguage.googleapis.com/v1beta',
                 'temperature' => 0.4,
-                'max_tokens'  => 1500,
-                'timeout'     => 30,
+                'max_tokens'  => 3000,
+                'timeout'     => 50,
             ]);
 
             $aiText = $provider->chat($messages, [
                 'temperature' => 0.4,
-                'max_tokens'  => 1500,
+                'max_tokens'  => 3000,
             ]);
 
             $durationMs = (int)round((microtime(true) - $startTime) * 1000);
@@ -159,7 +159,7 @@ PROMPT;
             return [
                 'success'  => true,
                 'message'  => $aiText,
-                'provider' => 'gemini (gemini-1.5-flash)',
+                'provider' => 'gemini (' . $model . ')',
             ];
         } catch (Throwable $e) {
             $safeError = preg_replace('/(api[_-]?key|authorization|bearer)\s*[:=]?\s*[^\s,;]+/iu', '[REDACTED]', $e->getMessage());
