@@ -11,57 +11,15 @@ $categories = [
 
 <div class="container-fluid px-0">
     <!-- Header Title -->
-    <div class="d-flex justify-content-between align-items-center mb-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-2">
         <div>
             <h2 class="h4 font-weight-bold mb-1">🛠️ إدارة ماهر AI — المعلم والمدرب الذكي للمهن</h2>
             <p class="text-muted small mb-0">التحكم في المهن المتاحة للمستخدمين، وتوجيهات الذكاء الاصطناعي، ومراقبة الجلسات.</p>
         </div>
-    </div>
-
-    <!-- Gemini AI Server Setup Card (Direct, 1-Click, Minimal) -->
-    <div class="card shadow-sm border-0 rounded-3 mb-4 <?= !empty($gemini_configured) ? 'border-start border-success border-4' : 'border-start border-warning border-4' ?>">
-        <div class="card-body p-4">
-            <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
-                <div>
-                    <h5 class="fw-bold mb-1 d-flex align-items-center gap-2">
-                        <span>⚡</span>
-                        <span>ربط سيرفر الذكاء الاصطناعي (Google Gemini)</span>
-                    </h5>
-                    <div class="text-muted small">
-                        مودل التشغيل المعتمد: <code class="fw-bold text-primary"><?= htmlspecialchars($gemini_model ?? 'gemini-3.6-flash') ?></code> (يتم كشفه وضبطه تلقائياً من سيرفر Google الرسمي بدون الحاجة لأي إعدادات مودل أو توكن).
-                    </div>
-                </div>
-                <div>
-                    <?php if (!empty($gemini_configured)): ?>
-                        <span class="badge bg-success bg-opacity-10 text-success border border-success px-3 py-2 fs-7 rounded-pill">
-                            <i class="fa-solid fa-circle-check me-1"></i> الاتصال الخارجي بالسيرفر مفعّل ونشط
-                        </span>
-                    <?php else: ?>
-                        <span class="badge bg-warning bg-opacity-10 text-warning border border-warning px-3 py-2 fs-7 rounded-pill">
-                            <i class="fa-solid fa-triangle-exclamation me-1"></i> بانتظار إضافة مفتاح Gemini API
-                        </span>
-                    <?php endif; ?>
-                </div>
-            </div>
-
-            <form method="POST" action="<?= url('/admin/mahir/save-gemini') ?>" id="geminiMahirForm">
-                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(CSRF::token()) ?>">
-                <div class="row g-2 align-items-center">
-                    <div class="col-md-7">
-                        <label class="form-label small fw-bold mb-1">مفتاح API الخاص بك من Google AI Studio (Gemini API Key)</label>
-                        <input type="password" name="api_key" id="mahirGeminiApiKey" class="form-control" placeholder="<?= !empty($gemini_configured) ? '•••••••••••••••••••••••• (المفتاح محفوظ — اتركه فارغاً للاحتفاظ به أو أدخل جديداً)' : 'أدخل مفتاح AIzaSy... هنا' ?>" autocomplete="new-password">
-                    </div>
-                    <div class="col-md-5 d-flex gap-2 pt-md-4">
-                        <button type="submit" class="btn btn-primary px-3 flex-grow-1">
-                            <i class="fa-solid fa-floppy-disk me-1"></i> حفظ وتفعيل
-                        </button>
-                        <button type="button" class="btn btn-outline-success px-3" id="btnTestMahirGemini">
-                            <i class="fa-solid fa-plug me-1"></i> فحص الاتصال
-                        </button>
-                    </div>
-                </div>
-                <div id="mahirTestResult" class="small mt-2" aria-live="polite"></div>
-            </form>
+        <div>
+            <a href="<?= url('/admin/ai') ?>" class="btn btn-outline-primary btn-sm">
+                <i class="fa-solid fa-robot me-1"></i> إدارة الذكاء الاصطناعي
+            </a>
         </div>
     </div>
 
@@ -255,35 +213,3 @@ $categories = [
         </div>
     </div>
 </div>
-
-<script>
-document.getElementById('btnTestMahirGemini')?.addEventListener('click', async () => {
-    const box = document.getElementById('mahirTestResult');
-    const keyInput = document.getElementById('mahirGeminiApiKey');
-    box.textContent = 'جارٍ فحص الاتصال بسيرفر Google Gemini...';
-    box.className = 'small mt-2 text-muted';
-    
-    const body = new URLSearchParams();
-    body.append('csrf_token', '<?= htmlspecialchars(CSRF::token()) ?>');
-    if (keyInput && keyInput.value.trim() !== '') {
-        body.append('api_key', keyInput.value.trim());
-    }
-
-    try {
-        const res = await fetch('<?= url('/admin/mahir/test-gemini') ?>', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'X-Requested-With': 'XMLHttpRequest'
-            },
-            body: body
-        });
-        const data = await res.json();
-        box.textContent = (data.ok ? '✓ ' : '✕ ') + (data.message || '');
-        box.className = 'small mt-2 ' + (data.ok ? 'text-success fw-bold' : 'text-danger fw-bold');
-    } catch (e) {
-        box.textContent = '✕ تعذر إجراء الفحص: ' + e.message;
-        box.className = 'small mt-2 text-danger fw-bold';
-    }
-});
-</script>
