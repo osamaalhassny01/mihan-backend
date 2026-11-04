@@ -178,7 +178,7 @@ class ApiController extends Controller
             'server'     => 'MIHAN Platform API',
             'app_name'   => defined('APP_NAME') ? APP_NAME : 'مِهَن - MIHAN',
             'timestamp'  => date('Y-m-d H:i:s'),
-            'version'    => '3.0.0',
+            'version'    => '3.1.0-fcm',
             'connected'  => true,
         ], 200, 'الخادم متصل ويعمل بصورة طبيعية');
     }
