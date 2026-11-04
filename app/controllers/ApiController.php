@@ -96,8 +96,37 @@ class ApiController extends Controller
     protected function authenticate(): ?array
     {
         $header = $_SERVER['HTTP_AUTHORIZATION'] ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '';
+
+        // Fallback to Apache / PHP request headers
+        if (empty($header) && function_exists('apache_request_headers')) {
+            $ah = apache_request_headers();
+            $header = $ah['Authorization'] ?? $ah['authorization'] ?? '';
+        }
+        if (empty($header) && function_exists('getallheaders')) {
+            $gh = getallheaders();
+            $header = $gh['Authorization'] ?? $gh['authorization'] ?? '';
+        }
+
+        // Fallback to custom X-Authorization or X-Auth-Token headers
+        if (empty($header)) {
+            $header = $_SERVER['HTTP_X_AUTHORIZATION'] ?? $_SERVER['HTTP_X_AUTH_TOKEN'] ?? '';
+        }
+
+        $rawToken = '';
         if (preg_match('/Bearer\s+(\S+)/i', $header, $matches)) {
-            $parts = explode('.', $matches[1]);
+            $rawToken = $matches[1];
+        } elseif (!empty($header) && strpos($header, '.') !== false) {
+            $rawToken = trim($header);
+        }
+
+        // Fallback to Query / Payload parameter (e.g. ?token= or body auth_token)
+        if (empty($rawToken)) {
+            $payload = $this->getPayload();
+            $rawToken = trim((string)($payload['auth_token'] ?? ($payload['token'] ?? ($_REQUEST['auth_token'] ?? ($_REQUEST['token'] ?? '')))));
+        }
+
+        if (!empty($rawToken)) {
+            $parts = explode('.', $rawToken);
             if (count($parts) === 2) {
                 [$encoded, $sig] = $parts;
                 $expectedSig = hash_hmac('sha256', $encoded, self::getSecretKey());

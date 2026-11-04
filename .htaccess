@@ -1,5 +1,10 @@
 RewriteEngine On
 
+# Pass Authorization header to PHP in Apache / FastCGI
+SetEnvIf Authorization "(.*)" HTTP_AUTHORIZATION=$1
+RewriteCond %{HTTP:Authorization} .
+RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
 # Deny direct access to sensitive folders
 RewriteRule ^(app|config|database|storage|tests|lang|graphify-out)/ - [F,L]
 
