@@ -7,7 +7,8 @@
 require_once __DIR__ . '/../../config/config.php';
 
 $cfg = require __DIR__ . '/../../config/database.php';
-$dsn = "mysql:host={$cfg['host']};charset={$cfg['charset']}";
+$portPart = !empty($cfg['port']) ? ";port={$cfg['port']}" : '';
+$dsn = "mysql:host={$cfg['host']}{$portPart};charset={$cfg['charset']}";
 $pdo = new PDO($dsn, $cfg['user'], $cfg['pass'], [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
 
 // Ensure database exists

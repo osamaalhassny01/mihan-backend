@@ -381,6 +381,7 @@ class ApiController extends Controller
         }
 
         try {
+            User::ensureFcmColumn();
             (new User())->update((int)$user['id'], ['fcm_token' => $token]);
             $this->json(['fcm_token' => $token], 200, 'تم تحديث توكن الإشعارات بنجاح');
         } catch (\Throwable $e) {

@@ -5,6 +5,19 @@ class User extends Model
 {
     protected string $table = 'users';
 
+    public static function ensureFcmColumn(): void
+    {
+        try {
+            $db = Database::getInstance();
+            $col = $db->query("SHOW COLUMNS FROM users LIKE 'fcm_token'")->fetch();
+            if (!$col) {
+                $db->exec("ALTER TABLE users ADD COLUMN fcm_token VARCHAR(255) NULL AFTER profile_photo");
+            }
+        } catch (\Throwable $e) {
+            error_log('ensureFcmColumn error: ' . $e->getMessage());
+        }
+    }
+
     public function register(array $data): int
     {
         return (int) $this->insert([
