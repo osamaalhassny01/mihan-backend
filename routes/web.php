@@ -160,6 +160,7 @@ $router->get('/api/ping', 'ApiController@ping');
 $router->post('/api/login', 'ApiController@login');
 $router->post('/api/register', 'ApiController@register');
 $router->get('/api/me', 'ApiController@me');
+$router->post('/api/profile/fcm-token', 'ApiController@updateFcmToken');
 
 // Public catalog lookups
 $router->get('/api/categories', 'ApiController@categories');

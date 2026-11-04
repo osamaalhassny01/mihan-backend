@@ -370,6 +370,24 @@ class ApiController extends Controller
         ], 200);
     }
 
+    public function updateFcmToken(): void
+    {
+        $user = $this->requireUser();
+        $payload = $this->getPayload();
+        $token = trim((string)($payload['fcm_token'] ?? ''));
+
+        if (empty($token)) {
+            $this->error('fcm_token مطلوب', 422);
+        }
+
+        try {
+            (new User())->update((int)$user['id'], ['fcm_token' => $token]);
+            $this->json(['fcm_token' => $token], 200, 'تم تحديث توكن الإشعارات بنجاح');
+        } catch (\Throwable $e) {
+            $this->error('تعذر حفظ توكن الإشعارات: ' . $e->getMessage(), 500);
+        }
+    }
+
     // =========================================================================
     // PUBLIC CATALOG LOOKUPS
     // =========================================================================
