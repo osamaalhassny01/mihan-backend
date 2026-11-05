@@ -836,15 +836,44 @@ class ApiController extends Controller
         $request = $reqModel->find((int)$id);
 
         if (!$request || !$reqModel->providerCanAccess($pId, $request)) {
-            $this->error('لا يمكنك رفض هذا الطلب', 403);
+            $this->error('لا يمكنك رفض هذا الطلب أو تم إسناده مسبقاً', 403);
         }
 
-        if ($reqModel->changeStatus((int)$id, 'rejected', (int)$user['id'], $pId)) {
-            ActivityLog::log((int)$user['id'], 'reject_request', "رفض الطلب #{$id}");
-            $this->json(null, 200, 'تم تسجيل رفض الطلب');
-        } else {
-            $this->error('تعذر رفض الطلب في حالته الحالية', 422);
+        $db = Database::getInstance();
+
+        // 1. Ensure provider_rejections table exists
+        $db->exec("
+            CREATE TABLE IF NOT EXISTS provider_rejections (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                request_id INT NOT NULL,
+                provider_id INT NOT NULL,
+                reason VARCHAR(255) NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE KEY uq_req_prov (request_id, provider_id),
+                INDEX idx_prov (provider_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+        ");
+
+        // 2. Record this provider's refusal so it immediately disappears from their feed
+        try {
+            $stmt = $db->prepare("INSERT IGNORE INTO provider_rejections (request_id, provider_id) VALUES (:rid, :pid)");
+            $stmt->execute(['rid' => (int)$id, 'pid' => $pId]);
+        } catch (Throwable $e) {}
+
+        // 3. If this request was specifically assigned to this provider, unassign it and keep it pending for other providers
+        if ((int)($request['provider_id'] ?? 0) === $pId) {
+            $reqModel->update((int)$id, ['provider_id' => null, 'status' => 'pending']);
+            // Notify customer that this provider was unavailable and system is broadcasting to others
+            FcmService::sendToUser(
+                (int)$request['customer_id'],
+                'تحديث بشأن طلبك 🔄',
+                "اعتذر مزود الخدمة عن تلبية الطلب حالياً، وجاري عرضه فوراً على بقية المهنيين المعتمدين.",
+                ['request_id' => (string)$id, 'type' => 'provider_declined']
+            );
         }
+
+        ActivityLog::log((int)$user['id'], 'reject_request', "رفض/اعتذار عن الطلب #{$id}");
+        $this->json(null, 200, 'تم استبعاد الطلب من قائمتك بنجاح');
     }
 
     public function startProviderRequest(int|string $id): void

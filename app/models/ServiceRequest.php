@@ -266,7 +266,7 @@ class ServiceRequest extends Model
              FROM service_requests sr
              JOIN services s ON s.id = sr.service_id
              JOIN users cu ON cu.id = sr.customer_id
-             WHERE sr.provider_id = :id
+             WHERE (sr.provider_id = :id AND sr.status != 'rejected')
                 OR (
                     sr.provider_id IS NULL 
                     AND sr.status = 'pending'
@@ -278,9 +278,13 @@ class ServiceRequest extends Model
                             WHERE pl.provider_id = :id3 AND pl.location_id = sr.location_id
                         )
                     )
+                    AND NOT EXISTS (
+                        SELECT 1 FROM provider_rejections pr 
+                        WHERE pr.request_id = sr.id AND pr.provider_id = :id4
+                    )
                 )
              ORDER BY sr.created_at DESC",
-            ['id' => $providerId, 'id2' => $providerId, 'id3' => $providerId]
+            ['id' => $providerId, 'id2' => $providerId, 'id3' => $providerId, 'id4' => $providerId]
         );
     }
 
