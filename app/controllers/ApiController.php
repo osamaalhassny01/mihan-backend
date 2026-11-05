@@ -747,6 +747,15 @@ class ApiController extends Controller
         $profile = $this->getProviderProfileOrDie($user);
         $pId = (int)$profile['id'];
 
+        // Strict Gate: Provider must be verified and active to view available requests
+        if ((int)($profile['is_verified'] ?? 0) !== 1 || (int)($user['is_active'] ?? 0) !== 1) {
+            $this->error('يجب توثيق واعتماد حسابك من إدارة المنصة ومراجعة بياناتك أولاً قبل استقبال وعرض الطلبات.', 403, [
+                'verification_required' => true,
+                'is_verified' => (int)($profile['is_verified'] ?? 0) === 1,
+                'is_active' => (int)($user['is_active'] ?? 0) === 1
+            ]);
+        }
+
         $reqModel = new ServiceRequest();
         $requests = $reqModel->forProvider($pId);
 
@@ -1099,16 +1108,37 @@ class ApiController extends Controller
         $user = $this->requireUser();
         $data = $this->getPayload();
 
-        $profession = trim((string)($data['profession'] ?? ''));
+        $serviceId = (int)($data['service_id'] ?? 0);
+        $locationId = (int)($data['location_id'] ?? 0);
         $yearsExp = (int)($data['years_exp'] ?? 0);
         $nationalId = trim((string)($data['national_id'] ?? ''));
-        $city = trim((string)($data['city'] ?? ''));
         $bio = trim((string)($data['bio'] ?? ''));
+        $certificateBase64 = trim((string)($data['certificate_base64'] ?? ''));
         $certificateUrl = trim((string)($data['certificate_url'] ?? ''));
 
-        if (mb_strlen($profession) < 2) {
-            $this->error('يرجى تحديد المهنة أو التخصص بدقة', 422);
+        // Handle base64 image upload from gallery if provided
+        if (!empty($certificateBase64)) {
+            $savedUrl = $this->saveBase64Certificate($certificateBase64, (int)$user['id']);
+            if ($savedUrl) {
+                $certificateUrl = $savedUrl;
+            }
         }
+
+        // Validate service from existing services in catalog
+        $serviceModel = new Service();
+        $selectedService = $serviceId > 0 ? $serviceModel->find($serviceId) : null;
+        if (!$selectedService) {
+            $this->error('يرجى اختيار مهنة/خدمة صحيحة من قائمة الخدمات المتاحة بالمنصة', 422);
+        }
+        $profession = $selectedService['name_ar'];
+
+        // Validate location from existing locations in catalog
+        $locationModel = new Location();
+        $selectedLocation = $locationId > 0 ? $locationModel->find($locationId) : null;
+        if (!$selectedLocation) {
+            $this->error('يرجى اختيار منطقة تغطية صحيحة من قائمة المناطق المتاحة بالمنصة', 422);
+        }
+        $city = $selectedLocation['name_ar'];
 
         ProviderApplication::ensureTable();
         $appModel = new ProviderApplication();
@@ -1119,7 +1149,7 @@ class ApiController extends Controller
             'national_id'     => $nationalId ?: null,
             'profession'      => $profession,
             'years_exp'       => $yearsExp,
-            'city'            => $city ?: null,
+            'city'            => $city,
             'bio'             => $bio ?: null,
             'certificate_url' => $certificateUrl ?: null,
             'status'          => 'pending',
@@ -1142,11 +1172,11 @@ class ApiController extends Controller
             'is_active' => 0
         ]);
 
-        // Ensure provider_profiles record exists
+        // Ensure provider_profiles record exists and link the chosen service & location
         $profModel = new ProviderProfile();
         $prof = $profModel->findByUser((int)$user['id']);
         if (!$prof) {
-            $profModel->insert([
+            $profId = (int)$profModel->insert([
                 'user_id'          => (int)$user['id'],
                 'profession'       => $profession,
                 'experience_years' => $yearsExp,
@@ -1154,13 +1184,23 @@ class ApiController extends Controller
                 'is_available'     => 0,
             ]);
         } else {
-            $profModel->update((int)$prof['id'], [
+            $profId = (int)$prof['id'];
+            $profModel->update($profId, [
                 'profession'       => $profession,
                 'experience_years' => $yearsExp,
                 'is_verified'      => 0,
                 'is_available'     => 0,
             ]);
         }
+
+        // Link service to provider_services
+        $db = Database::getInstance();
+        $db->prepare("DELETE FROM provider_services WHERE provider_id = :pid")->execute([':pid' => $profId]);
+        $db->prepare("INSERT INTO provider_services (provider_id, service_id) VALUES (:pid, :sid)")->execute([':pid' => $profId, ':sid' => $serviceId]);
+
+        // Link location to provider_locations
+        $db->prepare("DELETE FROM provider_locations WHERE provider_id = :pid")->execute([':pid' => $profId]);
+        $db->prepare("INSERT INTO provider_locations (provider_id, location_id) VALUES (:pid, :lid)")->execute([':pid' => $profId, ':lid' => $locationId]);
 
         ActivityLog::log((int)$user['id'], 'provider_application', "تقديم طلب انضمام كمقدم خدمة #{$appId}");
 
@@ -1185,5 +1225,44 @@ class ApiController extends Controller
             'application'     => $app,
             'is_active'       => (int)($user['is_active'] ?? 0) === 1
         ]);
+    }
+
+    /**
+     * Save base64 certificate image to public uploads
+     */
+    private function saveBase64Certificate(string $base64Data, int $userId): ?string
+    {
+        try {
+            if (preg_match('/^data:image\/(\w+);base64,/', $base64Data, $type)) {
+                $base64Data = substr($base64Data, strpos($base64Data, ',') + 1);
+                $ext = strtolower($type[1]);
+                if (!in_array($ext, ['jpg', 'jpeg', 'png', 'webp', 'gif'], true)) {
+                    $ext = 'jpg';
+                }
+            } else {
+                $ext = 'jpg';
+            }
+
+            $decoded = base64_decode($base64Data);
+            if ($decoded === false) {
+                return null;
+            }
+
+            $uploadDir = __DIR__ . '/../../public/uploads/certificates';
+            if (!is_dir($uploadDir)) {
+                @mkdir($uploadDir, 0777, true);
+            }
+
+            $fileName = "cert_{$userId}_" . time() . "_{$ext}." . $ext;
+            $targetPath = $uploadDir . '/' . $fileName;
+
+            if (file_put_contents($targetPath, $decoded)) {
+                $appUrl = defined('APP_URL') ? rtrim(APP_URL, '/') : '';
+                return $appUrl . '/uploads/certificates/' . $fileName;
+            }
+        } catch (Throwable $e) {
+            error_log('Failed saving certificate image: ' . $e->getMessage());
+        }
+        return null;
     }
 }

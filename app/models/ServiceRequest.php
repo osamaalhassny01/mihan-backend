@@ -268,9 +268,13 @@ class ServiceRequest extends Model
                 OR (
                     sr.provider_id IS NULL 
                     AND sr.status = 'pending'
+                    AND sr.service_id IN (SELECT service_id FROM provider_services WHERE provider_id = :id2)
                     AND (
-                        sr.service_id IN (SELECT service_id FROM provider_services WHERE provider_id = :id2)
-                        OR NOT EXISTS (SELECT 1 FROM provider_services WHERE provider_id = :id3)
+                        sr.location_id IS NULL
+                        OR EXISTS (
+                            SELECT 1 FROM provider_locations pl 
+                            WHERE pl.provider_id = :id3 AND pl.location_id = sr.location_id
+                        )
                     )
                 )
              ORDER BY sr.created_at DESC",

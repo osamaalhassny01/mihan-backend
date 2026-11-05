@@ -1006,7 +1006,14 @@ public function recordPayout()
         if(!$recipients){ Session::flash('error','لم يتم العثور على مستلمين صالحين.'); $this->redirect('/admin/notifications'); return; }
         $insert=$db->prepare("INSERT INTO notifications (user_id,title,message,link) VALUES (:uid,:title,:message,:link)");
         $db->beginTransaction();
-        try { foreach($recipients as $uid){ $insert->execute(['uid'=>(int)$uid,'title'=>$title,'message'=>$message,'link'=>$link!==''?$link:null]); } $db->commit(); }
+        try { 
+            foreach($recipients as $uid){ 
+                $insert->execute(['uid'=>(int)$uid,'title'=>$title,'message'=>$message,'link'=>$link!==''?$link:null]);
+                // Send FCM to target user
+                FcmService::sendToUser((int)$uid, $title, $message, ['type' => 'broadcast', 'link' => $link]);
+            } 
+            $db->commit(); 
+        }
         catch(Throwable $e){ if($db->inTransaction()) $db->rollBack(); throw $e; }
         ActivityLog::log(Auth::id(),'send_notification',"إرسال إشعار إلى ".count($recipients)." مستخدم");
         Session::flash('success','تم إرسال الإشعار إلى '.count($recipients).' مستخدم.');

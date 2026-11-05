@@ -27,18 +27,20 @@ class FcmService
     }
 
     /**
-     * Send notification to all available providers who offer a specific service
+     * Send notification strictly to verified active providers who cover BOTH the service and location
      */
     public static function notifyEligibleProviders(int $serviceId, ?int $locationId, string $title, string $body, array $data = []): int
     {
         try {
             $db = Database::getInstance();
+            // Strict query: Provider must be verified (is_verified=1), active (is_active=1), provides the service, AND covers the location
             $sql = "SELECT DISTINCT u.id, u.fcm_token
                     FROM users u
                     JOIN provider_profiles pp ON pp.user_id = u.id
                     JOIN provider_services ps ON ps.provider_id = pp.id
                     WHERE u.role = 'provider'
                       AND u.is_active = 1
+                      AND pp.is_verified = 1
                       AND ps.service_id = :service_id";
             
             $params = ['service_id' => $serviceId];
@@ -51,21 +53,6 @@ class FcmService
             $stmt = $db->prepare($sql);
             $stmt->execute($params);
             $providers = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-            // If no providers matched location, notify all providers offering that service
-            if (empty($providers)) {
-                $fallbackStmt = $db->prepare("
-                    SELECT DISTINCT u.id, u.fcm_token
-                    FROM users u
-                    JOIN provider_profiles pp ON pp.user_id = u.id
-                    JOIN provider_services ps ON ps.provider_id = pp.id
-                    WHERE u.role = 'provider'
-                      AND u.is_active = 1
-                      AND ps.service_id = :service_id
-                ");
-                $fallbackStmt->execute(['service_id' => $serviceId]);
-                $providers = $fallbackStmt->fetchAll(PDO::FETCH_ASSOC);
-            }
 
             $sentCount = 0;
             foreach ($providers as $p) {
