@@ -225,6 +225,9 @@ class ApiController extends Controller
         }
 
         $user = $userModel->first(['email' => $lookupEmail]);
+        if (!$user) {
+            $user = $userModel->first(['phone' => $lookupEmail]);
+        }
 
         $passwordValid = false;
         if ($user && !empty($user['password_hash'])) {
