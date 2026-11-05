@@ -9,6 +9,7 @@ require_once __DIR__ . '/../models/Location.php';
 require_once __DIR__ . '/../models/Review.php';
 require_once __DIR__ . '/../models/Invoice.php';
 require_once __DIR__ . '/../models/Notification.php';
+require_once __DIR__ . '/../models/Complaint.php';
 require_once __DIR__ . '/../models/ActivityLog.php';
 require_once __DIR__ . '/../models/ProviderApplication.php';
 require_once __DIR__ . '/../services/FinanceService.php';
@@ -1060,11 +1061,142 @@ class ApiController extends Controller
         $db = Database::getInstance();
         $complaints = $db->query("SELECT c.*, u.name user_name, u.role user_role, sr.request_number 
                                   FROM complaints c
-                                  JOIN users u ON u.id = c.user_id
+                                  JOIN users u ON u.id = c.created_by
                                   LEFT JOIN service_requests sr ON sr.id = c.request_id
                                   ORDER BY c.created_at DESC LIMIT 40")->fetchAll(PDO::FETCH_ASSOC);
 
         $this->json($complaints);
+    }
+
+    /**
+     * Get user's own complaints/support tickets
+     */
+    public function userComplaints(): void
+    {
+        $user = $this->requireUser();
+        $db = Database::getInstance();
+        $stmt = $db->prepare("
+            SELECT c.*, sr.request_number,
+                   (SELECT COUNT(*) FROM complaint_messages cm WHERE cm.complaint_id = c.id) as message_count
+            FROM complaints c
+            LEFT JOIN service_requests sr ON sr.id = c.request_id
+            WHERE c.created_by = :uid
+            ORDER BY c.created_at DESC
+        ");
+        $stmt->execute(['uid' => (int)$user['id']]);
+        $complaints = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $this->json($complaints);
+    }
+
+    /**
+     * Submit a new complaint or support ticket (pure text form)
+     */
+    public function submitComplaint(): void
+    {
+        $user = $this->requireUser();
+        $data = $this->getPayload();
+
+        $subject = trim((string)($data['subject'] ?? ''));
+        $description = trim((string)($data['description'] ?? ''));
+        $requestId = !empty($data['request_id']) ? (int)$data['request_id'] : null;
+
+        if (mb_strlen($subject) < 3) {
+            $this->error('يرجى كتابة موضوع الشكوى بوضوح (3 أحرف على الأقل)', 422);
+        }
+        if (mb_strlen($description) < 5) {
+            $this->error('يرجى كتابة تفاصيل الشكوى أو طلب الدعم (5 أحرف على الأقل)', 422);
+        }
+
+        $complaintModel = new Complaint();
+        $id = $complaintModel->createComplaint([
+            'created_by'  => (int)$user['id'],
+            'request_id'  => $requestId,
+            'subject'     => $subject,
+            'description' => $description,
+        ]);
+
+        ActivityLog::log((int)$user['id'], 'create_complaint', "تقديم شكوى/طلب دعم جديد #{$id}");
+
+        // FCM notification to admins/support
+        try {
+            FcmService::notifyEligibleProviders(
+                0, null,
+                'شكوى/طلب دعم جديد ⚠️',
+                "قام {$user['name']} بتقديم طلب دعم: {$subject}",
+                ['type' => 'new_complaint', 'complaint_id' => (string)$id]
+            );
+        } catch (Throwable $e) {}
+
+        $this->json([
+            'complaint_id' => $id,
+            'message'      => 'تم تسجيل شكواك بنجاح، وسيقوم فريق الدعم بالرد عليك في أقرب وقت.'
+        ], 201, 'تم إرسال الشكوى بنجاح');
+    }
+
+    /**
+     * Get complaint details with conversation thread
+     */
+    public function complaintDetails(int|string $id): void
+    {
+        $user = $this->requireUser();
+        $complaintModel = new Complaint();
+        $complaint = $complaintModel->find((int)$id);
+
+        if (!$complaint) {
+            $this->error('الشكوى غير موجودة', 404);
+        }
+
+        // Only owner, employee, or admin can access
+        if ((int)$complaint['created_by'] !== (int)$user['id'] && !in_array($user['role'], ['employee', 'admin'], true)) {
+            $this->error('غير مصرح لك بعرض هذه الشكوى', 403);
+        }
+
+        $messages = $complaintModel->messages((int)$id);
+
+        $this->json([
+            'complaint' => $complaint,
+            'messages'  => $messages,
+        ]);
+    }
+
+    /**
+     * Add reply message to a complaint
+     */
+    public function replyComplaint(int|string $id): void
+    {
+        $user = $this->requireUser();
+        $data = $this->getPayload();
+        $message = trim((string)($data['message'] ?? ''));
+
+        if (mb_strlen($message) < 2) {
+            $this->error('الرسالة قصيرة جداً', 422);
+        }
+
+        $complaintModel = new Complaint();
+        $complaint = $complaintModel->find((int)$id);
+
+        if (!$complaint) {
+            $this->error('الشكوى غير موجودة', 404);
+        }
+
+        if ((int)$complaint['created_by'] !== (int)$user['id'] && !in_array($user['role'], ['employee', 'admin'], true)) {
+            $this->error('غير مصرح لك بالرد على هذه الشكوى', 403);
+        }
+
+        $complaintModel->addMessage((int)$id, (int)$user['id'], $message);
+
+        // If replied by support, notify user via FCM
+        if (in_array($user['role'], ['employee', 'admin'], true) && (int)$complaint['created_by'] !== (int)$user['id']) {
+            FcmService::sendToUser(
+                (int)$complaint['created_by'],
+                'رد جديد على شكواك 💬',
+                "قام فريق الدعم بالرد على طلبك: {$message}",
+                ['type' => 'complaint_reply', 'complaint_id' => (string)$id]
+            );
+        }
+
+        $this->json(['success' => true], 200, 'تم إرسال الرد بنجاح');
     }
 
     public function adminDashboard(): void

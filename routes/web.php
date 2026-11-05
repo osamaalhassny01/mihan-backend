@@ -181,6 +181,12 @@ $router->post('/api/customer/requests/{id}/cancel', 'ApiController@cancelCustome
 $router->post('/api/customer/invoices/{id}/pay', 'ApiController@payCustomerInvoice');
 $router->post('/api/customer/requests/{id}/review', 'ApiController@submitCustomerReview');
 
+// Support & Complaints API (Mobile App)
+$router->get('/api/complaints', 'ApiController@userComplaints');
+$router->post('/api/complaints', 'ApiController@submitComplaint');
+$router->get('/api/complaints/{id}', 'ApiController@complaintDetails');
+$router->post('/api/complaints/{id}/reply', 'ApiController@replyComplaint');
+
 // Provider endpoints
 $router->get('/api/provider/dashboard', 'ApiController@providerDashboard');
 $router->post('/api/provider/apply', 'ApiController@applyAsProvider');
