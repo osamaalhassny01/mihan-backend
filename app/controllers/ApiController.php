@@ -10,7 +10,10 @@ require_once __DIR__ . '/../models/Review.php';
 require_once __DIR__ . '/../models/Invoice.php';
 require_once __DIR__ . '/../models/Notification.php';
 require_once __DIR__ . '/../models/ActivityLog.php';
+require_once __DIR__ . '/../models/ProviderApplication.php';
 require_once __DIR__ . '/../services/FinanceService.php';
+require_once __DIR__ . '/../services/FcmService.php';
+require_once __DIR__ . '/../services/ProviderVettingService.php';
 
 class ApiController extends Controller
 {
@@ -512,9 +515,12 @@ class ApiController extends Controller
         }
 
         $reqModel = new ServiceRequest();
+        $providerId = !empty($data['provider_id']) ? (int)$data['provider_id'] : null;
+
         $requestId = $reqModel->createRequest([
             'customer_id'    => (int)$user['id'],
             'service_id'     => $serviceId,
+            'provider_id'    => $providerId,
             'location_id'    => !empty($data['location_id']) ? (int)$data['location_id'] : null,
             'description'    => $description,
             'preferred_date' => $data['preferred_date'] ?? null,
@@ -524,6 +530,47 @@ class ApiController extends Controller
         ]);
 
         ActivityLog::log((int)$user['id'], 'create_request', "إنشاء طلب خدمة جديد #{$requestId}");
+
+        // FCM Notifications:
+        // 1. To Customer: Confirmation of request creation
+        try {
+            FcmService::sendToUser(
+                (int)$user['id'],
+                'تم إنشاء طلبك بنجاح 📋',
+                "طلبك رقم #{$requestId} قيد المتابعة وسيتم إشعارك فور اتخاذ أي إجراء.",
+                ['request_id' => (string)$requestId, 'type' => 'request_created']
+            );
+        } catch (Throwable $e) {
+            error_log('Failed sending customer confirmation FCM: ' . $e->getMessage());
+        }
+
+        // 2. To Specific Provider (if chosen by customer) or all eligible providers
+        try {
+            if ($providerId && $providerId > 0) {
+                // Find user_id of this provider_profile
+                $db = Database::getInstance();
+                $pUserId = (int)$db->query("SELECT user_id FROM provider_profiles WHERE id = {$providerId}")->fetchColumn();
+                if ($pUserId > 0) {
+                    FcmService::sendToUser(
+                        $pUserId,
+                        'طلب خدمة مباشر لك 🎯',
+                        "قام العميل {$user['name']} باختيارك مباشرة لطلب الخدمة: {$description}",
+                        ['request_id' => (string)$requestId, 'type' => 'direct_request']
+                    );
+                }
+            } else {
+                // Broadcast to eligible providers
+                FcmService::notifyEligibleProviders(
+                    $serviceId,
+                    !empty($data['location_id']) ? (int)$data['location_id'] : null,
+                    'طلب خدمة جديد في مِهَن 🔔',
+                    "طلب جديد: {$description}",
+                    ['request_id' => (string)$requestId, 'type' => 'new_request']
+                );
+            }
+        } catch (Throwable $e) {
+            error_log('Failed sending provider notification FCM: ' . $e->getMessage());
+        }
 
         $created = $reqModel->fullDetails($requestId);
         $this->json($created, 201, 'تم إنشاء طلب الخدمة بنجاح');
@@ -572,6 +619,21 @@ class ApiController extends Controller
         $ref = 'MIHAN-APP-PAY-' . date('YmdHis');
         if ($invoiceModel->recordPayment((int)$id, $method, $balance, $ref, 'سداد الفاتورة عبر تطبيق الهاتف المحمول')) {
             ActivityLog::log((int)$user['id'], 'app_payment', "سداد الفاتورة #{$id} بقيمة {$balance}");
+
+            // FCM to Provider that customer paid
+            if (!empty($invoice['provider_id'])) {
+                $db = Database::getInstance();
+                $pUserId = (int)$db->query("SELECT user_id FROM provider_profiles WHERE id = {$invoice['provider_id']}")->fetchColumn();
+                if ($pUserId > 0) {
+                    FcmService::sendToUser(
+                        $pUserId,
+                        'تم سداد الفاتورة 💰',
+                        "قام العميل بسداد الفاتورة الخاصة بالطلب بمبلغ {$balance}",
+                        ['invoice_id' => (string)$id, 'type' => 'invoice_paid']
+                    );
+                }
+            }
+
             $this->json([
                 'invoice_id'     => (int)$id,
                 'paid_amount'    => $balance,
@@ -740,6 +802,13 @@ class ApiController extends Controller
         $reqModel->update((int)$id, ['provider_id' => $pId]);
         if ($reqModel->changeStatus((int)$id, 'accepted', (int)$user['id'], $pId)) {
             (new Notification())->notify((int)$request['customer_id'], 'تم قبول طلبك', "قام مزود الخدمة بقبول طلبك رقم {$request['request_number']}", "/customer/requests/{$id}");
+            // FCM to Customer
+            FcmService::sendToUser(
+                (int)$request['customer_id'],
+                'تم قبول طلبك! 🎉',
+                "قام مزود الخدمة ({$user['name']}) بقبول طلبك رقم {$request['request_number']}",
+                ['request_id' => (string)$id, 'type' => 'request_accepted']
+            );
             ActivityLog::log((int)$user['id'], 'accept_request', "قبول الطلب #{$id}");
             $this->json(null, 200, 'تم قبول الطلب بنجاح');
         } else {
@@ -783,6 +852,13 @@ class ApiController extends Controller
 
         if ($reqModel->changeStatus((int)$id, 'in_progress', (int)$user['id'], $pId)) {
             (new Notification())->notify((int)$request['customer_id'], 'بدء تنفيذ الخدمة', "بدأ مزود الخدمة في تنفيذ طلبك رقم {$request['request_number']}", "/customer/requests/{$id}");
+            // FCM to Customer
+            FcmService::sendToUser(
+                (int)$request['customer_id'],
+                'بدء تنفيذ الخدمة 🛠️',
+                "بدأ مزود الخدمة ({$user['name']}) بالعمل على طلبك الآن.",
+                ['request_id' => (string)$id, 'type' => 'request_in_progress']
+            );
             ActivityLog::log((int)$user['id'], 'start_request', "بدء تنفيذ الطلب #{$id}");
             $this->json(null, 200, 'تم تحويل حالة الطلب إلى قيد التنفيذ');
         } else {
@@ -812,6 +888,13 @@ class ApiController extends Controller
         $result = $reqModel->completeWithInvoice((int)$id, $pId, $finalPrice, (int)$user['id']);
         if ($result['ok'] ?? false) {
             (new Notification())->notify((int)$request['customer_id'], 'اكتمال الخدمة وإصدار الفاتورة', "اكتمل تنفيذ طلبك رقم {$request['request_number']}. يرجى سداد الفاتورة وتقييم الخدمة.", "/customer/requests/{$id}");
+            // FCM to Customer
+            FcmService::sendToUser(
+                (int)$request['customer_id'],
+                'اكتمل تنفيذ طلبك بنجاح ✅',
+                "تم إكمال الخدمة بنجاح بمبلغ {$finalPrice}. يرجى سداد الفاتورة ومشاركة تقييمك.",
+                ['request_id' => (string)$id, 'type' => 'request_completed']
+            );
             ActivityLog::log((int)$user['id'], 'complete_request', "إكمال الطلب #{$id} بسعر {$finalPrice}");
             $this->json(null, 200, 'تم إكمال الطلب بنجاح وإصدار الفاتورة للعميل');
         } else {
@@ -1006,5 +1089,101 @@ class ApiController extends Controller
         $db = Database::getInstance();
         $users = $db->query("SELECT id, name, email, phone, role, is_active, created_at FROM users ORDER BY id DESC LIMIT 50")->fetchAll(PDO::FETCH_ASSOC);
         $this->json($users);
+    }
+
+    /**
+     * Submit application to become a certified service provider
+     */
+    public function applyAsProvider(): void
+    {
+        $user = $this->requireUser();
+        $data = $this->getPayload();
+
+        $profession = trim((string)($data['profession'] ?? ''));
+        $yearsExp = (int)($data['years_exp'] ?? 0);
+        $nationalId = trim((string)($data['national_id'] ?? ''));
+        $city = trim((string)($data['city'] ?? ''));
+        $bio = trim((string)($data['bio'] ?? ''));
+        $certificateUrl = trim((string)($data['certificate_url'] ?? ''));
+
+        if (mb_strlen($profession) < 2) {
+            $this->error('يرجى تحديد المهنة أو التخصص بدقة', 422);
+        }
+
+        ProviderApplication::ensureTable();
+        $appModel = new ProviderApplication();
+        $existing = $appModel->findByUserId((int)$user['id']);
+
+        $applicationData = [
+            'user_id'         => (int)$user['id'],
+            'national_id'     => $nationalId ?: null,
+            'profession'      => $profession,
+            'years_exp'       => $yearsExp,
+            'city'            => $city ?: null,
+            'bio'             => $bio ?: null,
+            'certificate_url' => $certificateUrl ?: null,
+            'status'          => 'pending',
+            'ai_score'        => 0,
+            'ai_recommendation' => null,
+            'ai_notes'        => null,
+        ];
+
+        if ($existing) {
+            $appModel->update((int)$existing['id'], $applicationData);
+            $appId = (int)$existing['id'];
+        } else {
+            $appId = (int)$appModel->insert($applicationData);
+        }
+
+        // Update user role to provider if customer, but keep inactive until admin approves
+        $userModel = new User();
+        $userModel->update((int)$user['id'], [
+            'role' => 'provider',
+            'is_active' => 0
+        ]);
+
+        // Ensure provider_profiles record exists
+        $profModel = new ProviderProfile();
+        $prof = $profModel->findByUser((int)$user['id']);
+        if (!$prof) {
+            $profModel->insert([
+                'user_id'          => (int)$user['id'],
+                'profession'       => $profession,
+                'experience_years' => $yearsExp,
+                'is_verified'      => 0,
+                'is_available'     => 0,
+            ]);
+        } else {
+            $profModel->update((int)$prof['id'], [
+                'profession'       => $profession,
+                'experience_years' => $yearsExp,
+                'is_verified'      => 0,
+                'is_available'     => 0,
+            ]);
+        }
+
+        ActivityLog::log((int)$user['id'], 'provider_application', "تقديم طلب انضمام كمقدم خدمة #{$appId}");
+
+        $this->json([
+            'application_id' => $appId,
+            'status'         => 'pending',
+            'message'        => 'تم استلام طلبك بنجاح، وهو قيد المراجعة والتدقيق من قبل الإدارة.'
+        ], 201, 'تم تقديم طلب الانضمام بنجاح');
+    }
+
+    /**
+     * Get current user's provider application status
+     */
+    public function providerApplicationStatus(): void
+    {
+        $user = $this->requireUser();
+        $appModel = new ProviderApplication();
+        $app = $appModel->findByUserId((int)$user['id']);
+
+        $this->json([
+            'has_application' => $app !== null,
+            'application'     => $app,
+            'is_active'       => (int)($user['is_active'] ?? 0) === 1
+        ]);
     }
 }

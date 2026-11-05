@@ -98,6 +98,10 @@ $router->post('/admin/employees/{id}/update', 'AdminController@updateEmployee');
 $router->post('/admin/employees/{id}/toggle', 'AdminController@toggleEmployee');
 
 $router->get('/admin/providers', 'AdminController@providers');
+$router->get('/admin/provider-applications', 'AdminController@providerApplications');
+$router->get('/admin/provider-applications/{id}', 'AdminController@providerApplicationDetails');
+$router->post('/admin/provider-applications/{id}/approve', 'AdminController@approveProviderApplication');
+$router->post('/admin/provider-applications/{id}/reject', 'AdminController@rejectProviderApplication');
 $router->post('/admin/providers/{id}/verify', 'AdminController@verifyProvider');
 $router->post('/admin/providers/{id}/unverify', 'AdminController@unverifyProvider');
 $router->get('/admin/providers/{id}/evaluation', 'AdminController@providerEvaluation');
@@ -179,6 +183,8 @@ $router->post('/api/customer/requests/{id}/review', 'ApiController@submitCustome
 
 // Provider endpoints
 $router->get('/api/provider/dashboard', 'ApiController@providerDashboard');
+$router->post('/api/provider/apply', 'ApiController@applyAsProvider');
+$router->get('/api/provider/application-status', 'ApiController@providerApplicationStatus');
 $router->get('/api/provider/requests', 'ApiController@providerRequests');
 $router->get('/api/provider/requests/{id}', 'ApiController@providerRequestDetails');
 $router->post('/api/provider/requests/{id}/accept', 'ApiController@acceptProviderRequest');

@@ -17,7 +17,7 @@ class ServiceRequest extends Model
 
     public function createRequest(array $data): int
     {
-        $id = (int) $this->insert([
+        $insertData = [
             'request_number' => 'TEMP',
             'customer_id'    => $data['customer_id'],
             'service_id'     => $data['service_id'],
@@ -28,7 +28,13 @@ class ServiceRequest extends Model
             'budget'         => $data['budget'] ?: null,
             'notes'          => $data['notes'] ?? null,
             'status'         => 'pending',
-        ]);
+        ];
+
+        if (!empty($data['provider_id'])) {
+            $insertData['provider_id'] = (int)$data['provider_id'];
+        }
+
+        $id = (int) $this->insert($insertData);
         $this->update($id, ['request_number' => generateRequestNumber($id)]);
         $this->logStatus($id, $data['customer_id'], null, 'pending');
         return $id;
@@ -259,10 +265,16 @@ class ServiceRequest extends Model
              JOIN services s ON s.id = sr.service_id
              JOIN users cu ON cu.id = sr.customer_id
              WHERE sr.provider_id = :id
-                OR (sr.provider_id IS NULL AND sr.status = 'pending'
-                    AND sr.service_id IN (SELECT service_id FROM provider_services WHERE provider_id = :id2))
+                OR (
+                    sr.provider_id IS NULL 
+                    AND sr.status = 'pending'
+                    AND (
+                        sr.service_id IN (SELECT service_id FROM provider_services WHERE provider_id = :id2)
+                        OR NOT EXISTS (SELECT 1 FROM provider_services WHERE provider_id = :id3)
+                    )
+                )
              ORDER BY sr.created_at DESC",
-            ['id' => $providerId, 'id2' => $providerId]
+            ['id' => $providerId, 'id2' => $providerId, 'id3' => $providerId]
         );
     }
 

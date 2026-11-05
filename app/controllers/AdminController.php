@@ -16,6 +16,9 @@ require_once __DIR__ . '/../models/SystemSetting.php';
 require_once __DIR__ . '/../models/Payout.php';
 require_once __DIR__ . '/../services/AnalyticsService.php';
 require_once __DIR__ . '/../models/Conversation.php';
+require_once __DIR__ . '/../models/ProviderApplication.php';
+require_once __DIR__ . '/../services/FcmService.php';
+require_once __DIR__ . '/../services/ProviderVettingService.php';
 
 class AdminController extends Controller
 {
@@ -1055,5 +1058,134 @@ public function recordPayout()
         if (!$conversation) { Session::flash('error', 'المحادثة غير موجودة'); $this->redirect('/admin/conversations'); return; }
         $messages = (new Conversation())->messages((int)$id);
         $this->view('admin/conversation_view', compact('conversation', 'messages') + ['title' => 'محادثة: ' . $conversation['request_number']], 'dashboard');
+    }
+
+    // =========================================================================
+    // PROVIDER APPLICATION REVIEW & VETTING (WITH GEMINI AI)
+    // =========================================================================
+
+    public function providerApplications()
+    {
+        Auth::requirePermission('verify_providers');
+        $appModel = new ProviderApplication();
+        $status = $this->input('status', null);
+        $applications = $appModel->allWithUserDetails($status);
+        $this->view('admin/provider_applications', [
+            'title' => 'طلبات انضمام مقدمي الخدمة',
+            'applications' => $applications,
+            'currentStatus' => $status
+        ], 'dashboard');
+    }
+
+    public function providerApplicationDetails($id)
+    {
+        Auth::requirePermission('verify_providers');
+        $appModel = new ProviderApplication();
+        $application = $appModel->findWithDetails((int)$id);
+        if (!$application) {
+            Session::flash('error', 'طلب الانضمام غير موجود');
+            $this->redirect('/admin/provider-applications');
+            return;
+        }
+
+        $this->view('admin/provider_application_details', [
+            'title' => 'مراجعة طلب مقدم الخدمة: ' . $application['user_name'],
+            'application' => $application
+        ], 'dashboard');
+    }
+
+    public function approveProviderApplication($id)
+    {
+        $this->verifyCsrfOrFail();
+        Auth::requirePermission('verify_providers');
+        $appModel = new ProviderApplication();
+        $application = $appModel->findWithDetails((int)$id);
+        if (!$application) {
+            Session::flash('error', 'الطلب غير موجود');
+            $this->redirect('/admin/provider-applications');
+            return;
+        }
+
+        $userId = (int)$application['user_id'];
+        $adminNotes = trim((string)$this->input('admin_notes', ''));
+
+        // 1. Update application status
+        $appModel->update((int)$id, [
+            'status' => 'approved',
+            'admin_notes' => $adminNotes ?: null,
+            'reviewed_by' => Auth::id(),
+            'reviewed_at' => date('Y-m-d H:i:s')
+        ]);
+
+        // 2. Activate user account & role
+        $userModel = new User();
+        $userModel->update($userId, [
+            'role' => 'provider',
+            'is_active' => 1
+        ]);
+
+        // 3. Mark provider profile verified and available
+        $profModel = new ProviderProfile();
+        $prof = $profModel->findByUser($userId);
+        if ($prof) {
+            $profModel->update((int)$prof['id'], [
+                'is_verified' => 1,
+                'is_available' => 1
+            ]);
+        }
+
+        // 4. Send FCM Notification to the provider
+        FcmService::sendToUser(
+            $userId,
+            'تهانينا! تم قبول طلبك 🎉',
+            'تمت الموافقة على انضمامك كمقدم خدمة معتمد في منصة مِهَن. يمكنك الآن استقبال الطلبات مباشرة!',
+            ['type' => 'application_approved']
+        );
+
+        ActivityLog::log(Auth::id(), 'approve_provider', "الموافقة على انضمام مقدم الخدمة {$application['user_name']} (#{$id})");
+        Session::flash('success', "تم قبول طلب {$application['user_name']} وتفعيل حسابه كمقدم خدمة معتمد وإرسال إشعار له.");
+        $this->redirect('/admin/provider-applications');
+    }
+
+    public function rejectProviderApplication($id)
+    {
+        $this->verifyCsrfOrFail();
+        Auth::requirePermission('verify_providers');
+        $appModel = new ProviderApplication();
+        $application = $appModel->findWithDetails((int)$id);
+        if (!$application) {
+            Session::flash('error', 'الطلب غير موجود');
+            $this->redirect('/admin/provider-applications');
+            return;
+        }
+
+        $userId = (int)$application['user_id'];
+        $adminNotes = trim((string)$this->input('admin_notes', ''));
+
+        // 1. Update application status
+        $appModel->update((int)$id, [
+            'status' => 'rejected',
+            'admin_notes' => $adminNotes ?: null,
+            'reviewed_by' => Auth::id(),
+            'reviewed_at' => date('Y-m-d H:i:s')
+        ]);
+
+        // 2. Keep user inactive
+        $userModel = new User();
+        $userModel->update($userId, [
+            'is_active' => 0
+        ]);
+
+        // 3. Send FCM Notification
+        FcmService::sendToUser(
+            $userId,
+            'تحديث بشأن طلب الانضمام لمنصة مِهَن',
+            'نأسف لإبلاغك بأنه لم يتم قبول طلبك كمقدم خدمة في الوقت الحالي. يمكنك التواصل مع الدعم لمزيد من التفاصيل.',
+            ['type' => 'application_rejected']
+        );
+
+        ActivityLog::log(Auth::id(), 'reject_provider', "رفض طلب انضمام مقدم الخدمة {$application['user_name']} (#{$id})");
+        Session::flash('info', "تم رفض طلب {$application['user_name']} وإرسال إشعار له.");
+        $this->redirect('/admin/provider-applications');
     }
 }
