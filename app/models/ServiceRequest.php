@@ -232,7 +232,9 @@ class ServiceRequest extends Model
         $sql = "SELECT sr.*, s.name_ar as service_name_ar, s.name_en as service_name_en,
                        c.name as customer_name, c.phone as customer_phone,
                        l.name_ar as location_name_ar, l.name_en as location_name_en,
-                       pp.id as provider_profile_id, pu.name as provider_name, pu.phone as provider_phone
+                       pp.id as provider_profile_id, pp.profession as provider_profession,
+                       pp.experience_years as provider_experience_years, pp.avg_rating as provider_avg_rating,
+                       pp.is_verified as provider_is_verified, pu.name as provider_name
                 FROM service_requests sr
                 JOIN services s ON s.id = sr.service_id
                 JOIN users c ON c.id = sr.customer_id
