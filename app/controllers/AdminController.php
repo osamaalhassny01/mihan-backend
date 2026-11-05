@@ -370,8 +370,43 @@ class AdminController extends Controller
     {
         Auth::requirePermission('verify_providers');
         $providerModel = new ProviderProfile();
-        $providers = $providerModel->search([]);
-        $this->view('admin/providers', ['title' => 'مقدمو الخدمة', 'providers' => $providers], 'dashboard');
+
+        $search = trim((string)$this->input('q', ''));
+        $status = trim((string)$this->input('status', '')); // 'verified', 'unverified', or ''
+        $serviceId = (int)$this->input('service_id', 0);
+        $locationId = (int)$this->input('location_id', 0);
+
+        $filters = [];
+        if ($search !== '') $filters['keyword'] = $search;
+        if ($status !== '') $filters['verification_status'] = $status;
+        if ($serviceId > 0) $filters['service_id'] = $serviceId;
+        if ($locationId > 0) $filters['location_id'] = $locationId;
+
+        $providers = $providerModel->search($filters);
+
+        // Fetch services and locations for filter dropdowns
+        $services = (new Service())->allActive();
+        $locations = (new Location())->allActive();
+
+        // Calculate statistics
+        $db = Database::getInstance();
+        $stats = [
+            'total'      => (int)$db->query("SELECT COUNT(*) FROM provider_profiles pp JOIN users u ON u.id = pp.user_id WHERE u.is_active = 1")->fetchColumn(),
+            'verified'   => (int)$db->query("SELECT COUNT(*) FROM provider_profiles pp JOIN users u ON u.id = pp.user_id WHERE u.is_active = 1 AND pp.is_verified = 1")->fetchColumn(),
+            'unverified' => (int)$db->query("SELECT COUNT(*) FROM provider_profiles pp JOIN users u ON u.id = pp.user_id WHERE u.is_active = 1 AND (pp.is_verified = 0 OR pp.is_verified IS NULL)")->fetchColumn(),
+        ];
+
+        $this->view('admin/providers', [
+            'title'      => 'مقدمو الخدمة',
+            'providers'  => $providers,
+            'services'   => $services,
+            'locations'  => $locations,
+            'stats'      => $stats,
+            'search'     => $search,
+            'status'     => $status,
+            'serviceId'  => $serviceId,
+            'locationId' => $locationId,
+        ], 'dashboard');
     }
 
 

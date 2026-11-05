@@ -95,6 +95,13 @@ class ProviderProfile extends Model
         if (!empty($filters['verified_only'])) {
             $sql .= " AND pp.is_verified = 1";
         }
+        if (isset($filters['verification_status']) && $filters['verification_status'] !== '') {
+            if ($filters['verification_status'] === 'verified') {
+                $sql .= " AND pp.is_verified = 1";
+            } elseif ($filters['verification_status'] === 'unverified') {
+                $sql .= " AND (pp.is_verified = 0 OR pp.is_verified IS NULL)";
+            }
+        }
         if (!empty($filters['available_only'])) {
             $sql .= " AND pp.is_available = 1";
         }
