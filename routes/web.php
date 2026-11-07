@@ -45,6 +45,10 @@ $router->get('/customer/notifications', 'CustomerController@notifications');
 $router->get('/customer/profile', 'CustomerController@profile');
 $router->post('/customer/profile', 'CustomerController@updateProfile');
 
+$router->post('/customer/requests/{id}/quote', 'CustomerController@decideQuote');
+$router->post('/customer/requests/{id}/confirm-completion', 'CustomerController@confirmCompletion');
+$router->post('/customer/requests/{id}/rework', 'CustomerController@requestRework');
+
 // ---------------- Provider ----------------
 $router->get('/provider/dashboard', 'ProviderController@dashboard');
 $router->get('/provider/requests', 'ProviderController@requests');
@@ -73,6 +77,8 @@ $router->post('/provider/profile/portfolio', 'ProviderController@uploadPortfolio
 $router->post('/provider/profile/photo', 'ProviderController@uploadPhoto');
 
 $router->get('/provider/notifications', 'ProviderController@notifications');
+
+$router->post('/provider/requests/{id}/quote', 'ProviderController@submitQuote');
 
 // ---------------- Admin ----------------
 $router->get('/admin/dashboard', 'AdminController@dashboard');
@@ -165,6 +171,10 @@ $router->post('/api/login', 'ApiController@login');
 $router->post('/api/register', 'ApiController@register');
 $router->get('/api/me', 'ApiController@me');
 $router->post('/api/profile/fcm-token', 'ApiController@updateFcmToken');
+$router->post('/api/profile/fcm-token/remove', 'ApiController@removeFcmToken');
+$router->get('/api/notifications', 'ApiController@notifications');
+$router->post('/api/notifications/read-all', 'ApiController@readAllNotifications');
+$router->post('/api/notifications/{id}/read', 'ApiController@readNotification');
 
 // Public catalog lookups
 $router->get('/api/categories', 'ApiController@categories');
@@ -180,6 +190,10 @@ $router->post('/api/customer/requests', 'ApiController@createCustomerRequest');
 $router->post('/api/customer/requests/{id}/cancel', 'ApiController@cancelCustomerRequest');
 $router->post('/api/customer/invoices/{id}/pay', 'ApiController@payCustomerInvoice');
 $router->post('/api/customer/requests/{id}/review', 'ApiController@submitCustomerReview');
+
+$router->post('/api/customer/requests/{id}/quote', 'ApiController@decideCustomerQuote');
+$router->post('/api/customer/requests/{id}/confirm-completion', 'ApiController@confirmCustomerCompletion');
+$router->post('/api/customer/requests/{id}/rework', 'ApiController@reworkCustomerRequest');
 
 // Support & Complaints API (Mobile App)
 $router->get('/api/complaints', 'ApiController@userComplaints');
@@ -197,6 +211,7 @@ $router->post('/api/provider/requests/{id}/accept', 'ApiController@acceptProvide
 $router->post('/api/provider/requests/{id}/reject', 'ApiController@rejectProviderRequest');
 $router->post('/api/provider/requests/{id}/start', 'ApiController@startProviderRequest');
 $router->post('/api/provider/requests/{id}/complete', 'ApiController@completeProviderRequest');
+$router->post('/api/provider/requests/{id}/quote', 'ApiController@quoteProviderRequest');
 $router->get('/api/provider/profile', 'ApiController@providerProfile');
 $router->post('/api/provider/availability', 'ApiController@toggleAvailability');
 $router->post('/api/provider/locations', 'ApiController@updateCoverageLocations');

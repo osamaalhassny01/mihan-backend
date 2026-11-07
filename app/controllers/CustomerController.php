@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/../services/RequestWorkflowService.php';
 require_once __DIR__ . '/../core/Controller.php';
 require_once __DIR__ . '/../models/ServiceRequest.php';
 require_once __DIR__ . '/../models/ProviderProfile.php';
@@ -25,7 +26,7 @@ class CustomerController extends Controller
         $reqModel = new ServiceRequest();
         $requests = $reqModel->forCustomer(Auth::id());
         $stats = [
-            'active'    => count(array_filter($requests, fn($r) => in_array($r['status'], ['new','pending','accepted','in_progress']))),
+            'active'    => count(array_filter($requests, fn($r) => in_array($r['status'], ['new','pending','accepted','in_progress','awaiting_confirmation']))),
             'completed' => count(array_filter($requests, fn($r) => $r['status'] === 'completed')),
             'cancelled' => count(array_filter($requests, fn($r) => $r['status'] === 'cancelled')),
         ];
@@ -333,13 +334,42 @@ class CustomerController extends Controller
         $this->view('customer/request_details', compact('request', 'history', 'review', 'invoice', 'payments', 'paidAmount', 'balanceAmount') + ['title' => $request['request_number']], 'dashboard');
     }
 
+    public function decideQuote($id)
+    {
+        $this->verifyCsrfOrFail();
+        $decision = (string)$this->input('decision', '');
+        if (!in_array($decision, ['approve', 'decline'], true)) {
+            Session::flash('error', 'قرار العرض غير صالح');
+        } else {
+            $result = (new RequestWorkflowService())->decide((int)$id, (int)Auth::id(), (int)$this->input('quote_id', 0), $decision === 'approve');
+            Session::flash($result['ok'] ? 'success' : 'error', $result['ok'] ? 'تم تسجيل قرارك بشأن العرض' : $result['error']);
+        }
+        $this->redirect('/customer/requests/' . $id);
+    }
+
+    public function confirmCompletion($id)
+    {
+        $this->verifyCsrfOrFail();
+        $result = (new RequestWorkflowService())->confirm((int)$id, (int)Auth::id());
+        Session::flash($result['ok'] ? 'success' : 'error', $result['ok'] ? 'تم الاستلام وإصدار الفاتورة بالسعر المتفق عليه' : $result['error']);
+        $this->redirect('/customer/requests/' . $id);
+    }
+
+    public function requestRework($id)
+    {
+        $this->verifyCsrfOrFail();
+        $result = (new RequestWorkflowService())->rework((int)$id, (int)Auth::id(), (string)$this->input('notes', ''));
+        Session::flash($result['ok'] ? 'success' : 'error', $result['ok'] ? 'تم إرسال ملاحظاتك إلى مقدم الخدمة' : $result['error']);
+        $this->redirect('/customer/requests/' . $id);
+    }
+
     public function cancelRequest($id)
     {
         $this->verifyCsrfOrFail();
         $reqModel = new ServiceRequest();
         $request = $reqModel->find((int)$id);
         if ($request && $request['customer_id'] == Auth::id()) {
-            if ($reqModel->changeStatus((int)$id, 'cancelled', Auth::id())) {
+            if ((new RequestWorkflowService())->cancel((int)$id, (int)Auth::id())['ok']) {
                 Session::flash('success', 'تم إلغاء الطلب');
             } else {
                 Session::flash('error', 'لا يمكن إلغاء الطلب في حالته الحالية');

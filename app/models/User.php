@@ -14,6 +14,28 @@ class User extends Model
         }
     }
 
+    public function registerFcmToken(int $userId, string $token): void
+    {
+        self::ensureFcmColumn();
+        $this->db->beginTransaction();
+        try {
+            $stmt = $this->db->prepare('UPDATE users SET fcm_token = NULL WHERE fcm_token = :token AND id <> :id');
+            $stmt->execute(['token' => $token, 'id' => $userId]);
+            $this->update($userId, ['fcm_token' => $token]);
+            $this->db->commit();
+        } catch (Throwable $e) {
+            if ($this->db->inTransaction()) $this->db->rollBack();
+            throw $e;
+        }
+    }
+
+    public function unregisterFcmToken(int $userId, string $token): void
+    {
+        self::ensureFcmColumn();
+        $stmt = $this->db->prepare('UPDATE users SET fcm_token = NULL WHERE id = :id AND fcm_token = :token');
+        $stmt->execute(['id' => $userId, 'token' => $token]);
+    }
+
     public function register(array $data): int
     {
         return (int) $this->insert([

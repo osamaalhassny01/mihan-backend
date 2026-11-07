@@ -1044,14 +1044,16 @@ public function recordPayout()
         try { 
             foreach($recipients as $uid){ 
                 $insert->execute(['uid'=>(int)$uid,'title'=>$title,'message'=>$message,'link'=>$link!==''?$link:null]);
-                // Send FCM to target user
-                FcmService::sendToUser((int)$uid, $title, $message, ['type' => 'broadcast', 'link' => $link]);
             } 
             $db->commit(); 
         }
         catch(Throwable $e){ if($db->inTransaction()) $db->rollBack(); throw $e; }
+        $pushAccepted = 0;
+        foreach ($recipients as $uid) {
+            if (FcmService::pushToUser((int)$uid, $title, $message, ['type' => 'broadcast', 'link' => $link])) $pushAccepted++;
+        }
         ActivityLog::log(Auth::id(),'send_notification',"إرسال إشعار إلى ".count($recipients)." مستخدم");
-        Session::flash('success','تم إرسال الإشعار إلى '.count($recipients).' مستخدم.');
+        Session::flash('success','تم حفظ الإشعار لـ '.count($recipients).' مستخدم. قَبِل Firebase الإرسال إلى '.$pushAccepted.' جهاز.');
         $this->redirect('/admin/notifications');
     }
 

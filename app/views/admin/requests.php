@@ -14,7 +14,7 @@
       <span class="input-group-text bg-white border-end-0" style="border-color: #d4e7e4; color: #0f766e;"><i class="fa-solid fa-filter"></i></span>
       <select name="status" class="form-select border-start-0 ps-0" style="border-color: #d4e7e4; border-radius: 0 10px 10px 0; font-weight: 600;" onchange="this.form.submit()">
         <option value="">جميع الحالات (<?= count($requests) ?>)</option>
-        <?php foreach (['new'=>'جديد','pending'=>'قيد الانتظار','accepted'=>'مقبول','in_progress'=>'قيد التنفيذ','completed'=>'مكتمل','cancelled'=>'ملغي','rejected'=>'مرفوض'] as $sKey => $sLabel): ?>
+        <?php foreach (['new'=>'جديد','pending'=>'قيد الانتظار','accepted'=>'مقبول','in_progress'=>'قيد التنفيذ','awaiting_confirmation'=>'بانتظار الاستلام','completed'=>'مكتمل','cancelled'=>'ملغي','rejected'=>'مرفوض'] as $sKey => $sLabel): ?>
           <option value="<?= $sKey ?>" <?= $status===$sKey?'selected':'' ?>><?= $sLabel ?> (<?= $sKey ?>)</option>
         <?php endforeach; ?>
       </select>

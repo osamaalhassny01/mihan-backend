@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/../services/RequestWorkflowService.php';
 require_once __DIR__ . '/../core/Controller.php';
 require_once __DIR__ . '/../models/ServiceRequest.php';
 require_once __DIR__ . '/../models/ProviderProfile.php';
@@ -33,7 +34,7 @@ class ProviderController extends Controller
         $stats = [
             'total'     => count($requests),
             'pending'   => count(array_filter($requests, fn($r) => $r['status'] === 'pending')),
-            'accepted'  => count(array_filter($requests, fn($r) => in_array($r['status'], ['accepted','in_progress']))),
+            'accepted'  => count(array_filter($requests, fn($r) => in_array($r['status'], ['accepted','in_progress','awaiting_confirmation']))),
             'completed' => count(array_filter($requests, fn($r) => $r['status'] === 'completed')),
         ];
         require_once __DIR__ . '/../services/FinanceService.php';
@@ -156,10 +157,22 @@ public function finance()
         $reqModel = new ServiceRequest();
         $request = $reqModel->find((int)$id);
         if (!$request || (int)$request['provider_id'] !== (int)$this->profile['id']) { Session::flash('error', 'هذا الطلب غير متاح لك'); $this->redirect('/provider/requests'); return; }
-        if ($request && $reqModel->changeStatus((int)$id, 'in_progress', Auth::id())) {
+        if ($request && $reqModel->changeStatus((int)$id, 'in_progress', Auth::id(), (int)$this->profile['id'])) {
             (new Notification())->notify($request['customer_id'], 'بدأ تنفيذ الطلب', 'بدأ مقدم الخدمة بتنفيذ طلبك', '/customer/requests/' . $id);
             Session::flash('success', 'تم تحديث الحالة إلى قيد التنفيذ');
         }
+        $this->redirect('/provider/requests/' . $id);
+    }
+
+    public function submitQuote($id)
+    {
+        $this->verifyCsrfOrFail();
+        Auth::requirePermission('provide_service');
+        $raw = $this->input('total_price', '');
+        $result = (new RequestWorkflowService())->quote((int)$id, (int)$this->profile['id'], (int)Auth::id(),
+            is_numeric($raw) ? (float)$raw : 0, (string)$this->input('details', ''),
+            $this->input('visit_at') ? str_replace('T', ' ', (string)$this->input('visit_at')) . ':00' : null);
+        Session::flash($result['ok'] ? 'success' : 'error', $result['ok'] ? 'تم إرسال العرض للعميل' : $result['error']);
         $this->redirect('/provider/requests/' . $id);
     }
 
@@ -181,6 +194,12 @@ public function finance()
             $this->redirect('/provider/requests'); return;
         }
 
+        if ((int)($request['workflow_version'] ?? 1) >= 2) {
+            $result = (new RequestWorkflowService())->finish((int)$id, (int)$this->profile['id'], (int)Auth::id(), (string)$this->input('completion_notes', ''));
+            Session::flash($result['ok'] ? 'success' : 'error', $result['ok'] ? 'تم إرسال الإنجاز للعميل لتأكيد الاستلام' : $result['error']);
+            $this->redirect('/provider/requests/' . $id);
+            return;
+        }
         $rawFinalPrice = $this->input('final_price', $request['budget'] ?: 0);
         if ($rawFinalPrice === '' || !is_numeric($rawFinalPrice)) {
             Session::flash('error', 'يرجى إدخال سعر نهائي صحيح');
@@ -237,7 +256,7 @@ public function conversation($id)
             Session::flash('error', 'هذا الطلب غير متاح لك');
             $this->redirect('/provider/requests'); return;
         }
-        if (!in_array($request['status'], ['accepted','in_progress'], true)) {
+        if (!in_array($request['status'], ['accepted','in_progress','awaiting_confirmation'], true)) {
             Session::flash('error', 'المساعد المهني متاح بعد قبول الطلب وحتى إكماله');
             $this->redirect('/provider/requests/' . $id); return;
         }

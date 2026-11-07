@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/../services/RequestWorkflowService.php';
 require_once __DIR__ . '/../core/Controller.php';
 require_once __DIR__ . '/../models/User.php';
 require_once __DIR__ . '/../models/ProviderProfile.php';
@@ -383,17 +384,48 @@ class ApiController extends Controller
         $payload = $this->getPayload();
         $token = trim((string)($payload['fcm_token'] ?? ''));
 
-        if (empty($token)) {
-            $this->error('fcm_token مطلوب', 422);
+        if ($token === '' || strlen($token) > 255) {
+            $this->error('توكن الإشعارات مطلوب وبحد أقصى 255 حرفًا', 422);
         }
 
         try {
-            User::ensureFcmColumn();
-            (new User())->update((int)$user['id'], ['fcm_token' => $token]);
-            $this->json(['fcm_token' => $token], 200, 'تم تحديث توكن الإشعارات بنجاح');
+            (new User())->registerFcmToken((int)$user['id'], $token);
+            $this->json(null, 200, 'تم تحديث توكن الإشعارات بنجاح');
         } catch (\Throwable $e) {
-            $this->error('تعذر حفظ توكن الإشعارات: ' . $e->getMessage(), 500);
+            $this->error('تعذر حفظ توكن الإشعارات', 500);
         }
+    }
+
+    public function notifications(): void
+    {
+        $user = $this->requireUser();
+        $model = new Notification();
+        $this->json(['items' => $model->forUser((int)$user['id'], 100),
+                     'unread_count' => $model->unreadCount((int)$user['id'])]);
+    }
+
+    public function readNotification(int|string $id): void
+    {
+        $user = $this->requireUser();
+        (new Notification())->markRead((int)$id, (int)$user['id']);
+        $this->json(null);
+    }
+
+    public function readAllNotifications(): void
+    {
+        $user = $this->requireUser();
+        (new Notification())->markAllRead((int)$user['id']);
+        $this->json(null);
+    }
+
+    public function removeFcmToken(): void
+    {
+        $user = $this->requireUser();
+        $payload = $this->getPayload();
+        $token = trim((string)($payload['fcm_token'] ?? ''));
+        if ($token === '' || strlen($token) > 255) $this->error('توكن الإشعارات غير صالح', 422);
+        (new User())->unregisterFcmToken((int)$user['id'], $token);
+        $this->json(null, 200, 'تم إلغاء تسجيل الجهاز');
     }
 
     // =========================================================================
@@ -449,7 +481,7 @@ class ApiController extends Controller
         $reqModel = new ServiceRequest();
         $all = $reqModel->where(['customer_id' => $cId], 'created_at DESC');
 
-        $active = array_filter($all, fn($r) => in_array($r['status'], ['new', 'pending', 'accepted', 'in_progress'], true));
+        $active = array_filter($all, fn($r) => in_array($r['status'], ['new', 'pending', 'accepted', 'in_progress', 'awaiting_confirmation'], true));
         $completed = array_filter($all, fn($r) => $r['status'] === 'completed');
 
         $this->json([
@@ -468,7 +500,7 @@ class ApiController extends Controller
         $status = $_GET['status'] ?? null;
         $reqModel = new ServiceRequest();
 
-        if ($status && in_array($status, ['new', 'pending', 'accepted', 'in_progress', 'completed', 'cancelled'], true)) {
+        if ($status && in_array($status, ['new', 'pending', 'accepted', 'in_progress', 'awaiting_confirmation', 'completed', 'cancelled'], true)) {
             $requests = $reqModel->where(['customer_id' => (int)$user['id'], 'status' => $status], 'created_at DESC');
         } else {
             $requests = $reqModel->where(['customer_id' => (int)$user['id']], 'created_at DESC');
@@ -518,8 +550,21 @@ class ApiController extends Controller
             $this->error('يرجى تحديد الخدمة وكتابة وصف تفصيلي لا يقل عن 5 أحرف', 422);
         }
 
+        $service = (new Service())->find($serviceId);
+        if (!$service || (int)$service['is_active'] !== 1) $this->error('الخدمة المختارة غير متاحة', 422);
+        if (!empty($data['location_id'])) {
+            $location = (new Location())->find((int)$data['location_id']);
+            if (!$location || (int)$location['is_active'] !== 1) $this->error('المنطقة المختارة غير متاحة', 422);
+        }
+        if (isset($data['budget']) && $data['budget'] !== '' &&
+            (!is_numeric($data['budget']) || !is_finite((float)$data['budget']) || (float)$data['budget'] <= 0 || (float)$data['budget'] > 99999999.99)) {
+            $this->error('الميزانية يجب أن تكون مبلغًا أكبر من صفر', 422);
+        }
         $reqModel = new ServiceRequest();
         $providerId = !empty($data['provider_id']) ? (int)$data['provider_id'] : null;
+        if ($providerId !== null && !$reqModel->providerEligibleForRequest($providerId, $data + ['service_id' => $serviceId])) {
+            $this->error('مقدم الخدمة غير معتمد أو غير متاح للخدمة والمنطقة والموعد المحدد', 422);
+        }
 
         $requestId = $reqModel->createRequest([
             'customer_id'    => (int)$user['id'],
@@ -590,7 +635,7 @@ class ApiController extends Controller
             $this->error('الطلب غير موجود', 404);
         }
 
-        if ($reqModel->changeStatus((int)$id, 'cancelled', (int)$user['id'])) {
+        if ((new RequestWorkflowService())->cancel((int)$id, (int)$user['id'])['ok']) {
             ActivityLog::log((int)$user['id'], 'cancel_request', "إلغاء الطلب #{$id}");
             $this->json(null, 200, 'تم إلغاء الطلب بنجاح');
         } else {
@@ -716,7 +761,7 @@ class ApiController extends Controller
         $requests = $reqModel->forProvider($pId);
 
         $pending = count(array_filter($requests, fn($r) => $r['status'] === 'pending'));
-        $accepted = count(array_filter($requests, fn($r) => in_array($r['status'], ['accepted', 'in_progress'], true)));
+        $accepted = count(array_filter($requests, fn($r) => in_array($r['status'], ['accepted', 'in_progress', 'awaiting_confirmation'], true)));
         $completed = count(array_filter($requests, fn($r) => $r['status'] === 'completed'));
 
         $fin = (new FinanceService())->providerSummary($pId);
@@ -811,10 +856,8 @@ class ApiController extends Controller
             $this->error('لا يمكنك قبول هذا الطلب', 403);
         }
 
-        // Assign to this provider if unassigned and transition to accepted
-        $reqModel->update((int)$id, ['provider_id' => $pId]);
+        // The model assigns and accepts in one conditional update.
         if ($reqModel->changeStatus((int)$id, 'accepted', (int)$user['id'], $pId)) {
-            (new Notification())->notify((int)$request['customer_id'], 'تم قبول طلبك', "قام مزود الخدمة بقبول طلبك رقم {$request['request_number']}", "/customer/requests/{$id}");
             // FCM to Customer
             FcmService::sendToUser(
                 (int)$request['customer_id'],
@@ -842,37 +885,17 @@ class ApiController extends Controller
             $this->error('لا يمكنك رفض هذا الطلب أو تم إسناده مسبقاً', 403);
         }
 
-        $db = Database::getInstance();
-
-        // 1. Ensure provider_rejections table exists
-        $db->exec("
-            CREATE TABLE IF NOT EXISTS provider_rejections (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                request_id INT NOT NULL,
-                provider_id INT NOT NULL,
-                reason VARCHAR(255) NULL,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE KEY uq_req_prov (request_id, provider_id),
-                INDEX idx_prov (provider_id)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-        ");
-
-        // 2. Record this provider's refusal so it immediately disappears from their feed
-        try {
-            $stmt = $db->prepare("INSERT IGNORE INTO provider_rejections (request_id, provider_id) VALUES (:rid, :pid)");
-            $stmt->execute(['rid' => (int)$id, 'pid' => $pId]);
-        } catch (Throwable $e) {}
-
-        // 3. If this request was specifically assigned to this provider, unassign it and keep it pending for other providers
+        if (!$reqModel->rejectAndRequeue((int)$id, (int)$user['id'], $pId)) {
+            $this->error('تعذر رفض الطلب؛ ربما تغيرت حالته بالفعل', 422);
+        }
         if ((int)($request['provider_id'] ?? 0) === $pId) {
-            $reqModel->update((int)$id, ['provider_id' => null, 'status' => 'pending']);
-            // Notify customer that this provider was unavailable and system is broadcasting to others
-            FcmService::sendToUser(
-                (int)$request['customer_id'],
-                'تحديث بشأن طلبك 🔄',
-                "اعتذر مزود الخدمة عن تلبية الطلب حالياً، وجاري عرضه فوراً على بقية المهنيين المعتمدين.",
-                ['request_id' => (string)$id, 'type' => 'provider_declined']
-            );
+            FcmService::sendToUser((int)$request['customer_id'], 'تحديث بشأن طلبك',
+                'اعتذر مقدم الخدمة، وأصبح طلبك متاحًا لبقية مقدمي الخدمة المعتمدين.',
+                ['request_id' => (string)$id, 'type' => 'provider_declined', 'link' => "/customer/requests/{$id}"]);
+            FcmService::notifyEligibleProviders((int)$request['service_id'],
+                !empty($request['location_id']) ? (int)$request['location_id'] : null,
+                'طلب خدمة متاح', 'يوجد طلب خدمة متاح في منطقتك.',
+                ['request_id' => (string)$id, 'type' => 'new_request']);
         }
 
         ActivityLog::log((int)$user['id'], 'reject_request', "رفض/اعتذار عن الطلب #{$id}");
@@ -893,7 +916,6 @@ class ApiController extends Controller
         }
 
         if ($reqModel->changeStatus((int)$id, 'in_progress', (int)$user['id'], $pId)) {
-            (new Notification())->notify((int)$request['customer_id'], 'بدء تنفيذ الخدمة', "بدأ مزود الخدمة في تنفيذ طلبك رقم {$request['request_number']}", "/customer/requests/{$id}");
             // FCM to Customer
             FcmService::sendToUser(
                 (int)$request['customer_id'],
@@ -904,7 +926,7 @@ class ApiController extends Controller
             ActivityLog::log((int)$user['id'], 'start_request', "بدء تنفيذ الطلب #{$id}");
             $this->json(null, 200, 'تم تحويل حالة الطلب إلى قيد التنفيذ');
         } else {
-            $this->error('تعذر بدء تنفيذ الطلب', 422);
+            $this->error('يلزم اعتماد العميل للعرض قبل بدء التنفيذ، أو تغيرت حالة الطلب', 422);
         }
     }
 
@@ -922,14 +944,19 @@ class ApiController extends Controller
             $this->error('هذا الطلب غير مخصص لك', 403);
         }
 
-        $finalPrice = !empty($data['final_price']) ? (float)$data['final_price'] : (float)($request['budget'] ?? 100.0);
-        if ($finalPrice <= 0) {
+        if ((int)($request['workflow_version'] ?? 1) >= 2) {
+            $result = (new RequestWorkflowService())->finish((int)$id, $pId, (int)$user['id'], (string)($data['completion_notes'] ?? ''));
+            if (!$result['ok']) $this->error($result['error'], 422);
+            $this->json(null, 200, 'تم إرسال ملخص الإنجاز للعميل لتأكيد الاستلام');
+        }
+
+        $finalPrice = is_numeric($data['final_price'] ?? null) ? (float)$data['final_price'] : 0.0;
+        if (!is_finite($finalPrice) || $finalPrice <= 0) {
             $this->error('يرجى تحديد سعر نهائي صحيح للخدمة', 422);
         }
 
         $result = $reqModel->completeWithInvoice((int)$id, $pId, $finalPrice, (int)$user['id']);
         if ($result['ok'] ?? false) {
-            (new Notification())->notify((int)$request['customer_id'], 'اكتمال الخدمة وإصدار الفاتورة', "اكتمل تنفيذ طلبك رقم {$request['request_number']}. يرجى سداد الفاتورة وتقييم الخدمة.", "/customer/requests/{$id}");
             // FCM to Customer
             FcmService::sendToUser(
                 (int)$request['customer_id'],
@@ -942,6 +969,45 @@ class ApiController extends Controller
         } else {
             $this->error($result['error'] ?? 'تعذر إكمال الطلب في حالته الحالية', 422);
         }
+    }
+
+    public function quoteProviderRequest(int|string $id): void
+    {
+        $user = $this->requireUser('provider');
+        $profile = $this->getProviderProfileOrDie($user);
+        $data = $this->getPayload();
+        $price = is_numeric($data['total_price'] ?? null) ? (float)$data['total_price'] : 0;
+        $result = (new RequestWorkflowService())->quote((int)$id, (int)$profile['id'], (int)$user['id'], $price,
+            (string)($data['details'] ?? ''), !empty($data['visit_at']) ? (string)$data['visit_at'] : null);
+        if (!$result['ok']) $this->error($result['error'], 422);
+        $this->json($result, 200, 'تم إرسال العرض للعميل');
+    }
+
+    public function decideCustomerQuote(int|string $id): void
+    {
+        $user = $this->requireUser('customer');
+        $data = $this->getPayload();
+        if (!in_array($data['decision'] ?? '', ['approve', 'decline'], true)) $this->error('قرار العرض غير صالح', 422);
+        $result = (new RequestWorkflowService())->decide((int)$id, (int)$user['id'], (int)($data['quote_id'] ?? 0), $data['decision'] === 'approve');
+        if (!$result['ok']) $this->error($result['error'], 422);
+        $this->json(null, 200, $data['decision'] === 'approve' ? 'تم اعتماد العرض والسعر' : 'تم طلب عرض جديد من مقدم الخدمة');
+    }
+
+    public function confirmCustomerCompletion(int|string $id): void
+    {
+        $user = $this->requireUser('customer');
+        $result = (new RequestWorkflowService())->confirm((int)$id, (int)$user['id']);
+        if (!$result['ok']) $this->error($result['error'], 422);
+        $this->json($result, 200, 'تم تأكيد الاستلام وإصدار الفاتورة بالسعر المعتمد');
+    }
+
+    public function reworkCustomerRequest(int|string $id): void
+    {
+        $user = $this->requireUser('customer');
+        $data = $this->getPayload();
+        $result = (new RequestWorkflowService())->rework((int)$id, (int)$user['id'], (string)($data['notes'] ?? ''));
+        if (!$result['ok']) $this->error($result['error'], 422);
+        $this->json(null, 200, 'تم إرسال ملاحظاتك وإعادة الطلب للتنفيذ');
     }
 
     public function providerProfile(): void
@@ -1040,7 +1106,7 @@ class ApiController extends Controller
         $db = Database::getInstance();
         $totalRequests = (int)$db->query("SELECT COUNT(*) c FROM service_requests")->fetchColumn();
         $pendingRequests = (int)$db->query("SELECT COUNT(*) c FROM service_requests WHERE status IN ('new', 'pending')")->fetchColumn();
-        $activeRequests = (int)$db->query("SELECT COUNT(*) c FROM service_requests WHERE status IN ('accepted', 'in_progress')")->fetchColumn();
+        $activeRequests = (int)$db->query("SELECT COUNT(*) c FROM service_requests WHERE status IN ('accepted', 'in_progress', 'awaiting_confirmation')")->fetchColumn();
         $completedRequests = (int)$db->query("SELECT COUNT(*) c FROM service_requests WHERE status = 'completed'")->fetchColumn();
         $openComplaints = (int)$db->query("SELECT COUNT(*) c FROM complaints WHERE status IN ('open', 'under_review')")->fetchColumn();
         $totalProviders = (int)$db->query("SELECT COUNT(*) c FROM users WHERE role = 'provider' AND is_active = 1")->fetchColumn();
@@ -1152,12 +1218,13 @@ class ApiController extends Controller
 
         // FCM notification to admins/support
         try {
-            FcmService::notifyEligibleProviders(
-                0, null,
-                'شكوى/طلب دعم جديد ⚠️',
-                "قام {$user['name']} بتقديم طلب دعم: {$subject}",
-                ['type' => 'new_complaint', 'complaint_id' => (string)$id]
-            );
+            $staff = (new User())->query("SELECT id, role FROM users WHERE is_active = 1 AND role IN ('admin', 'employee')");
+            foreach ($staff as $recipient) {
+                FcmService::sendToUser((int)$recipient['id'], 'شكوى/طلب دعم جديد',
+                    "قام {$user['name']} بتقديم طلب دعم: {$subject}",
+                    ['type' => 'new_complaint', 'complaint_id' => (string)$id,
+                     'link' => '/' . $recipient['role'] . '/complaints/' . $id]);
+            }
         } catch (Throwable $e) {}
 
         $this->json([

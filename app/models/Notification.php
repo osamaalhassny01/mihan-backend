@@ -7,13 +7,33 @@ class Notification extends Model
 
     public function notify(int $userId, string $title, string $message, ?string $link = null, ?string $category = null): void
     {
-        if (function_exists('settingBool') && !settingBool('notifications_enabled', true)) return;
-        if ($category === 'request' && function_exists('settingBool') && !settingBool('notify_on_request', true)) return;
-        if ($category === 'completion' && function_exists('settingBool') && !settingBool('notify_on_completion', true)) return;
-        if ($category === 'payment' && function_exists('settingBool') && !settingBool('notify_on_payment', true)) return;
-        if ($category === 'complaint' && function_exists('settingBool') && !settingBool('notify_on_complaint', true)) return;
+        $this->deliver($userId, $title, $message, $link, $category);
+    }
+
+    public function deliver(int $userId, string $title, string $message, ?string $link = null, ?string $category = null, array $data = []): bool
+    {
+        if (function_exists('settingBool') && !settingBool('notifications_enabled', true)) return false;
+        $eventCategory = match ($category) {
+            'request_created', 'direct_request', 'new_request', 'request_accepted', 'request_in_progress', 'provider_declined', 'quote_submitted', 'quote_decided', 'rework_requested', 'request_cancelled' => 'request',
+            'request_completed', 'completion_requested' => 'completion',
+            'invoice_paid' => 'payment',
+            'new_complaint', 'complaint_reply' => 'complaint',
+            default => $category,
+        };
+        $switch = match ($eventCategory) {
+            'request' => 'notify_on_request',
+            'completion' => 'notify_on_completion',
+            'payment' => 'notify_on_payment',
+            'complaint' => 'notify_on_complaint',
+            default => null,
+        };
+        if ($switch !== null && function_exists('settingBool') && !settingBool($switch, true)) return false;
 
         $this->insert(['user_id' => $userId, 'title' => $title, 'message' => $message, 'link' => $link]);
+        require_once __DIR__ . '/../services/FcmService.php';
+        return FcmService::pushToUser($userId, $title, $message, array_merge($data, [
+            'type' => $category ?? 'system', 'link' => $link ?? '',
+        ]));
     }
 
     public function forUser(int $userId, int $limit = 20): array

@@ -115,7 +115,7 @@ function statusBadge(string $status): string
 {
     $map = [
         'new' => 'secondary', 'pending' => 'warning', 'accepted' => 'info',
-        'in_progress' => 'primary', 'completed' => 'success',
+        'awaiting_confirmation' => 'warning', 'in_progress' => 'primary', 'completed' => 'success',
         'cancelled' => 'dark', 'rejected' => 'danger',
         'open' => 'warning', 'in_review' => 'info', 'resolved' => 'success', 'closed' => 'secondary',
         'unpaid' => 'danger', 'paid' => 'success', 'refunded' => 'secondary',
@@ -123,7 +123,7 @@ function statusBadge(string $status): string
     $color = $map[$status] ?? 'secondary';
     $labels = [
         'new' => ['جديد', 'New'], 'pending' => ['قيد الانتظار', 'Pending'], 'accepted' => ['مقبول', 'Accepted'],
-        'in_progress' => ['قيد التنفيذ', 'In Progress'], 'completed' => ['مكتمل', 'Completed'], 'cancelled' => ['ملغى', 'Cancelled'],
+        'awaiting_confirmation' => ['بانتظار الاستلام', 'Awaiting confirmation'], 'in_progress' => ['قيد التنفيذ', 'In Progress'], 'completed' => ['مكتمل', 'Completed'], 'cancelled' => ['ملغى', 'Cancelled'],
         'rejected' => ['مرفوض', 'Rejected'], 'open' => ['مفتوح', 'Open'], 'in_review' => ['قيد المراجعة', 'In Review'],
         'resolved' => ['تم الحل', 'Resolved'], 'closed' => ['مغلق', 'Closed'], 'unpaid' => ['غير مدفوع', 'Unpaid'],
         'paid' => ['مدفوع', 'Paid'], 'refunded' => ['مسترد', 'Refunded'],

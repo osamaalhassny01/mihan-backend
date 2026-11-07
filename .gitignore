@@ -9,3 +9,6 @@ public/uploads/portfolio/*
 !public/uploads/portfolio/.gitkeep
 .DS_Store
 graphify-out/
+
+*service-account*.json
+*firebase-adminsdk*.json

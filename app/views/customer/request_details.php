@@ -1,3 +1,4 @@
+<?php $agreementRole = 'customer'; include __DIR__ . '/../partials/request_agreement.php'; ?>
 <div class="d-flex justify-content-between align-items-center mb-3">
   <div class="d-flex align-items-center gap-2">
     <h3 class="mb-0"><?= e($request['request_number']) ?></h3>
@@ -106,7 +107,7 @@
       </div>
     <?php endif; ?>
 
-    <?php if (!empty($request['provider_id']) && settingBool('internal_messaging_enabled', true) && in_array($request['status'], ['pending','accepted','in_progress','completed'], true)): ?>
+    <?php if (!empty($request['provider_id']) && settingBool('internal_messaging_enabled', true) && in_array($request['status'], ['pending','accepted','in_progress','awaiting_confirmation','completed'], true)): ?>
       <div class="card p-4 mb-3 border-info"><div class="d-flex justify-content-between align-items-center"><div><h6 class="mb-1">التواصل مع مقدم الخدمة</h6><div class="small text-muted">جميع المراسلات المتعلقة بهذا الطلب تتم داخل منصة مِهَن.</div></div><a class="btn btn-info" href="<?= url('/customer/requests/' . $request['id'] . '/conversation') ?>"><i class="fa-solid fa-comments"></i> فتح المحادثة</a></div></div>
     <?php endif; ?>
 

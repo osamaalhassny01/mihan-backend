@@ -1,3 +1,4 @@
+<?php $agreementRole = 'provider'; include __DIR__ . '/../partials/request_agreement.php'; ?>
 <div class="d-flex justify-content-between align-items-center mb-3">
   <div class="d-flex align-items-center gap-2">
     <h3 class="mb-0"><?= e($request['request_number']) ?></h3>
@@ -19,20 +20,24 @@
       <?php if ($request['status'] === 'pending'): ?>
         <form method="POST" action="<?= url('/provider/requests/' . $request['id'] . '/accept') ?>"><?= csrf_field() ?><button class="btn btn-success btn-sm">قبول الطلب</button></form>
         <form method="POST" action="<?= url('/provider/requests/' . $request['id'] . '/reject') ?>"><?= csrf_field() ?><button class="btn btn-outline-danger btn-sm">رفض الطلب</button></form>
-      <?php elseif ($request['status'] === 'accepted'): ?>
+      <?php elseif ($request['status'] === 'accepted' && ((int)($request['workflow_version'] ?? 1) === 1 || ($request['quote_status'] ?? '') === 'approved')): ?>
         <form method="POST" action="<?= url('/provider/requests/' . $request['id'] . '/start') ?>"><?= csrf_field() ?><button class="btn btn-primary btn-sm">بدء التنفيذ</button></form>
       <?php elseif ($request['status'] === 'in_progress'): ?>
         <form method="POST" action="<?= url('/provider/requests/' . $request['id'] . '/complete') ?>" class="d-flex gap-2">
           <?= csrf_field() ?>
+          <?php if ((int)($request['workflow_version'] ?? 1) >= 2): ?>
+          <textarea name="completion_notes" required minlength="5" maxlength="3000" class="form-control" placeholder="ملخص العمل المنجز"></textarea>
+          <?php else: ?>
           <input type="number" name="final_price" class="form-control form-control-sm" placeholder="السعر النهائي" value="<?= $request['budget'] ?>" style="max-width:150px">
-          <button class="btn btn-success btn-sm">إكمال الخدمة</button>
+          <?php endif; ?>
+          <button class="btn btn-success btn-sm"><?= (int)($request['workflow_version'] ?? 1) >= 2 ? 'طلب تأكيد الاستلام' : 'إكمال الخدمة' ?></button>
         </form>
       <?php endif; ?>
     </div>
   </div>
 </div>
 <div class="col-md-12">
-<?php if (settingBool('internal_messaging_enabled', true) && in_array($request['status'], ['accepted','in_progress','completed'], true)): ?>
+<?php if (settingBool('internal_messaging_enabled', true) && in_array($request['status'], ['accepted','in_progress','awaiting_confirmation','completed'], true)): ?>
 <div class="card p-4 mb-3 border-info"><div class="d-flex justify-content-between align-items-center"><div><h6 class="mb-1">التواصل مع العميل</h6><div class="small text-muted">التواصل يتم من خلال منصة مِهَن فقط.</div></div><a class="btn btn-info" href="<?= url('/provider/requests/' . $request['id'] . '/conversation') ?>"><i class="fa-solid fa-comments"></i> فتح المحادثة</a></div></div>
 <?php endif; ?>
 
