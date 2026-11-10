@@ -127,6 +127,8 @@ $router->post('/admin/locations/{id}/delete', 'AdminController@deleteLocation');
 
 $router->get('/admin/requests', 'AdminController@requests');
 $router->get('/admin/requests/{id}', 'AdminController@requestDetails');
+$router->post('/admin/requests/{id}/forward', 'AdminController@forwardRequest');
+$router->post('/admin/requests/{id}/cancel', 'AdminController@cancelRequest');
 
 $router->get('/admin/complaints', 'AdminController@complaints');
 $router->get('/admin/complaints/{id}', 'AdminController@complaintDetails');
@@ -154,6 +156,8 @@ $router->get('/admin/conversations/{id}', 'AdminController@conversationView');
 $router->get('/employee/dashboard', 'EmployeeController@dashboard');
 $router->get('/employee/requests', 'EmployeeController@requests');
 $router->get('/employee/requests/{id}', 'EmployeeController@requestDetails');
+$router->post('/employee/requests/{id}/forward', 'EmployeeController@forwardRequest');
+$router->post('/employee/requests/{id}/cancel', 'EmployeeController@cancelRequest');
 $router->get('/employee/providers', 'EmployeeController@providers');
 $router->get('/employee/reviews', 'EmployeeController@reviews');
 $router->get('/employee/complaints', 'EmployeeController@complaints');
@@ -220,10 +224,19 @@ $router->get('/api/provider/finance', 'ApiController@providerFinance');
 // Employee API endpoints
 $router->get('/api/employee/dashboard', 'ApiController@employeeDashboard');
 $router->get('/api/employee/requests', 'ApiController@employeeRequests');
+$router->get('/api/employee/requests/{id}', 'ApiController@requestTrackingDetails');
+$router->post('/api/employee/requests/{id}/forward', 'ApiController@forwardRequest');
+$router->post('/api/employee/requests/{id}/cancel', 'ApiController@cancelByManagement');
+$router->post('/api/employee/requests/{id}/status', 'ApiController@updateRequestStatusByManagement');
 $router->get('/api/employee/complaints', 'ApiController@employeeComplaints');
 
 // Admin API endpoints
 $router->get('/api/admin/dashboard', 'ApiController@adminDashboard');
+$router->get('/api/admin/requests', 'ApiController@employeeRequests');
+$router->get('/api/admin/requests/{id}', 'ApiController@requestTrackingDetails');
+$router->post('/api/admin/requests/{id}/forward', 'ApiController@forwardRequest');
+$router->post('/api/admin/requests/{id}/cancel', 'ApiController@cancelByManagement');
+$router->post('/api/admin/requests/{id}/status', 'ApiController@updateRequestStatusByManagement');
 $router->get('/api/admin/users', 'ApiController@adminUsers');
 
 // -------- Mahir AI API (Flutter) --------

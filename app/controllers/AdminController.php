@@ -546,7 +546,29 @@ class AdminController extends Controller
         Auth::requirePermission('manage_requests');
         $status = $this->input('status');
         $reqModel = new ServiceRequest();
-        $requests = $status ? $reqModel->where(['status' => $status], 'created_at DESC') : $reqModel->all('created_at DESC');
+        $db = Database::getInstance();
+        $whereSql = "";
+        $params = [];
+        if ($status && in_array($status, ['new', 'pending', 'accepted', 'in_progress', 'awaiting_confirmation', 'completed', 'cancelled', 'rejected'], true)) {
+            $whereSql = "WHERE sr.status = :status";
+            $params['status'] = $status;
+        }
+
+        $sql = "SELECT sr.*, s.name_ar as service_name_ar, c.name as customer_name, c.phone as customer_phone,
+                       pu.name as provider_name, pp.profession as provider_profession,
+                       COALESCE(sr.final_price, q.total_price, sr.budget) as display_price
+                FROM service_requests sr
+                JOIN services s ON s.id = sr.service_id
+                JOIN users c ON c.id = sr.customer_id
+                LEFT JOIN provider_profiles pp ON pp.id = sr.provider_id
+                LEFT JOIN users pu ON pu.id = pp.user_id
+                LEFT JOIN request_quotes q ON q.id = sr.quote_id
+                {$whereSql}
+                ORDER BY sr.created_at DESC";
+        $stmt = $db->prepare($sql);
+        $stmt->execute($params);
+        $requests = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
         $this->view('admin/requests', ['title' => 'الطلبات', 'requests' => $requests, 'status' => $status], 'dashboard');
     }
 
@@ -555,8 +577,170 @@ class AdminController extends Controller
         Auth::requirePermission('manage_requests');
         $reqModel = new ServiceRequest();
         $request = $reqModel->fullDetails((int)$id);
+        if (!$request) {
+            Session::flash('error', 'الطلب غير موجود');
+            $this->redirect('/admin/requests');
+            return;
+        }
         $history = $reqModel->history((int)$id);
-        $this->view('admin/request_details', compact('request', 'history') + ['title' => $request['request_number'] ?? ''], 'dashboard');
+
+        $db = Database::getInstance();
+        $serviceId = (int)($request['service_id'] ?? 0);
+        $providers = $db->query("SELECT pp.id, u.name, pp.profession, pp.avg_rating, pp.experience_years
+                                 FROM provider_profiles pp
+                                 JOIN users u ON u.id = pp.user_id
+                                 JOIN provider_services ps ON ps.provider_id = pp.id
+                                 WHERE ps.service_id = {$serviceId} AND u.is_active = 1 AND pp.is_verified = 1
+                                 ORDER BY pp.avg_rating DESC")->fetchAll(PDO::FETCH_ASSOC);
+        if (empty($providers)) {
+            $providers = $db->query("SELECT pp.id, u.name, pp.profession, pp.avg_rating, pp.experience_years
+                                     FROM provider_profiles pp
+                                     JOIN users u ON u.id = pp.user_id
+                                     WHERE u.is_active = 1 AND pp.is_verified = 1
+                                     ORDER BY pp.avg_rating DESC LIMIT 20")->fetchAll(PDO::FETCH_ASSOC);
+        }
+
+        $this->view('admin/request_details', compact('request', 'history', 'providers') + ['title' => $request['request_number'] ?? ''], 'dashboard');
+    }
+
+    public function forwardRequest($id)
+    {
+        $this->verifyCsrfOrFail();
+        Auth::requirePermission('manage_requests');
+        $id = (int)$id;
+        $providerProfileId = (int)$this->input('provider_id');
+        $price = (float)$this->input('price');
+        $notes = trim((string)$this->input('notes'));
+
+        if ($providerProfileId <= 0 || $price <= 0) {
+            Session::flash('error', 'يرجى اختيار مقدم الخدمة وتحديد السعر المعتمد.');
+            $this->redirect('/admin/requests/' . $id);
+            return;
+        }
+
+        $db = Database::getInstance();
+        $reqModel = new ServiceRequest();
+        $request = $reqModel->find($id);
+        if (!$request) {
+            Session::flash('error', 'الطلب غير موجود.');
+            $this->redirect('/admin/requests');
+            return;
+        }
+
+        $profile = (new ProviderProfile())->find($providerProfileId);
+        $providerUser = $profile ? (new User())->find((int)$profile['user_id']) : null;
+        $providerName = $providerUser['name'] ?? 'مقدم الخدمة';
+
+        $db->beginTransaction();
+        try {
+            $oldStatus = $request['status'];
+
+            $stmt = $db->prepare("INSERT INTO request_quotes (request_id, provider_id, total_price, details, status, decided_at, created_at)
+                                  VALUES (:r_id, :p_id, :price, :details, 'approved', NOW(), NOW())");
+            $quoteDetails = !empty($notes) ? $notes : "تم اعتماد وتحديد السعر بواسطة إدارة المنصة (" . Auth::user()['name'] . ")";
+            $stmt->execute([
+                'r_id' => $id,
+                'p_id' => $providerProfileId,
+                'price' => $price,
+                'details' => $quoteDetails,
+            ]);
+            $quoteId = (int)$db->lastInsertId();
+
+            $stmt = $db->prepare("UPDATE service_requests
+                                  SET provider_id = :provider_id,
+                                      status = 'accepted',
+                                      final_price = :price,
+                                      quote_id = :quote_id,
+                                      updated_at = NOW()
+                                  WHERE id = :id");
+            $stmt->execute([
+                'provider_id' => $providerProfileId,
+                'price' => $price,
+                'quote_id' => $quoteId,
+                'id' => $id,
+            ]);
+
+            $stmt = $db->prepare("INSERT INTO request_status_history (request_id, changed_by, old_status, new_status, changed_at)
+                                  VALUES (:req_id, :user_id, :old_status, 'accepted', NOW())");
+            $stmt->execute([
+                'req_id' => $id,
+                'user_id' => Auth::id(),
+                'old_status' => $oldStatus,
+            ]);
+
+            $db->commit();
+        } catch (Throwable $e) {
+            if ($db->inTransaction()) $db->rollBack();
+            Session::flash('error', 'فشل اعتماد وتوجيه الطلب: ' . $e->getMessage());
+            $this->redirect('/admin/requests/' . $id);
+            return;
+        }
+
+        $formattedPrice = number_format($price, 0) . ' ر.ي';
+        try {
+            FcmService::sendToUser((int)$request['customer_id'], 'تم قبول طلبك وتوجيهه لمقدم الخدمة 🛠️', "تم اعتماد طلبك #{$request['request_number']} وتوجيهه إلى ({$providerName}) بسعر: {$formattedPrice}.", ['request_id' => (string)$id, 'type' => 'request_accepted_by_admin']);
+            if ($profile) {
+                FcmService::sendToUser((int)$profile['user_id'], 'تم تحويل طلب خدمة إليك من الإدارة 📌', "تم توجيه الطلب #{$request['request_number']} إليك بسعر: {$formattedPrice}.", ['request_id' => (string)$id, 'type' => 'request_assigned_by_admin']);
+            }
+        } catch (Throwable $e) {}
+
+        ActivityLog::log(Auth::id(), 'forward_request', "قبول وتوجيه الطلب #{$id} إلى المزود #{$providerProfileId} بالسعر {$price}");
+        Session::flash('success', "تم قبول الطلب وتوجيهه إلى ({$providerName}) بنجاح وتحديد السعر المعتمد ({$formattedPrice}).");
+        $this->redirect('/admin/requests/' . $id);
+    }
+
+    public function cancelRequest($id)
+    {
+        $this->verifyCsrfOrFail();
+        Auth::requirePermission('manage_requests');
+        $id = (int)$id;
+        $reason = trim((string)$this->input('reason'));
+        if (empty($reason)) {
+            $reason = 'تم الإلغاء بواسطة إدارة المنصة';
+        }
+
+        $db = Database::getInstance();
+        $reqModel = new ServiceRequest();
+        $request = $reqModel->find($id);
+        if (!$request) {
+            Session::flash('error', 'الطلب غير موجود.');
+            $this->redirect('/admin/requests');
+            return;
+        }
+
+        $oldStatus = $request['status'];
+        $db->beginTransaction();
+        try {
+            $existingNotes = $request['notes'] ?? '';
+            $updatedNotes = trim($existingNotes . "\n[إلغاء الإدارة]: " . $reason);
+
+            $stmt = $db->prepare("UPDATE service_requests SET status = 'cancelled', notes = :notes, updated_at = NOW() WHERE id = :id");
+            $stmt->execute(['notes' => $updatedNotes, 'id' => $id]);
+
+            $stmt = $db->prepare("INSERT INTO request_status_history (request_id, changed_by, old_status, new_status, changed_at) VALUES (:req_id, :user_id, :old_status, 'cancelled', NOW())");
+            $stmt->execute(['req_id' => $id, 'user_id' => Auth::id(), 'old_status' => $oldStatus]);
+
+            $db->commit();
+        } catch (Throwable $e) {
+            if ($db->inTransaction()) $db->rollBack();
+            Session::flash('error', 'فشل إلغاء الطلب: ' . $e->getMessage());
+            $this->redirect('/admin/requests/' . $id);
+            return;
+        }
+
+        try {
+            FcmService::sendToUser((int)$request['customer_id'], "تم إلغاء الطلب #{$request['request_number']}", "تم إلغاء طلبك من قبل الإدارة. السبب: {$reason}", ['request_id' => (string)$id, 'type' => 'request_cancelled_by_admin']);
+            if (!empty($request['provider_id'])) {
+                $profile = (new ProviderProfile())->find((int)$request['provider_id']);
+                if ($profile) {
+                    FcmService::sendToUser((int)$profile['user_id'], "تم إلغاء الطلب #{$request['request_number']}", "تم إلغاء الطلب من قبل الإدارة.", ['request_id' => (string)$id, 'type' => 'request_cancelled_by_admin']);
+                }
+            }
+        } catch (Throwable $e) {}
+
+        ActivityLog::log(Auth::id(), 'cancel_request', "إلغاء الطلب #{$id} بواسطة الإدارة - السبب: {$reason}");
+        Session::flash('success', 'تم إلغاء الطلب بنجاح وإشعار العميل.');
+        $this->redirect('/admin/requests/' . $id);
     }
 
     // ---------------- Complaints ----------------

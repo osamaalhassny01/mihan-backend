@@ -1139,14 +1139,334 @@ class ApiController extends Controller
         }
 
         $db = Database::getInstance();
-        $requests = $db->query("SELECT sr.*, s.name_ar service_name, c.name customer_name, c.phone customer_phone, p.name provider_name, p.phone provider_phone 
-                                FROM service_requests sr
-                                JOIN services s ON s.id = sr.service_id
-                                JOIN users c ON c.id = sr.customer_id
-                                LEFT JOIN users p ON p.id = sr.provider_id
-                                ORDER BY sr.created_at DESC LIMIT 50")->fetchAll(PDO::FETCH_ASSOC);
+        $status = $_GET['status'] ?? null;
+        $whereSql = "";
+        $params = [];
+        if ($status && in_array($status, ['new', 'pending', 'accepted', 'in_progress', 'awaiting_confirmation', 'completed', 'cancelled', 'rejected'], true)) {
+            $whereSql = "WHERE sr.status = :status";
+            $params['status'] = $status;
+        }
+
+        $sql = "SELECT sr.*, s.name_ar as service_name, s.name_en as service_name_en,
+                       c.name as customer_name, c.phone as customer_phone,
+                       l.name_ar as location_name,
+                       pp.id as provider_profile_id, pp.profession as provider_profession,
+                       pu.name as provider_name, pu.phone as provider_phone,
+                       COALESCE(sr.final_price, q.total_price, sr.budget) as display_price,
+                       q.total_price as quoted_price
+                FROM service_requests sr
+                JOIN services s ON s.id = sr.service_id
+                JOIN users c ON c.id = sr.customer_id
+                LEFT JOIN locations l ON l.id = sr.location_id
+                LEFT JOIN provider_profiles pp ON pp.id = sr.provider_id
+                LEFT JOIN users pu ON pu.id = pp.user_id
+                LEFT JOIN request_quotes q ON q.id = sr.quote_id
+                {$whereSql}
+                ORDER BY sr.created_at DESC LIMIT 100";
+
+        $stmt = $db->prepare($sql);
+        $stmt->execute($params);
+        $requests = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         $this->json($requests);
+    }
+
+    public function requestTrackingDetails(int $id): void
+    {
+        $user = $this->requireUser();
+        if (!in_array($user['role'], ['employee', 'admin'], true)) {
+            $this->error('غير مصرح لك.', 403);
+        }
+
+        $reqModel = new ServiceRequest();
+        $request = $reqModel->fullDetails($id);
+        if (!$request) {
+            $this->error('الطلب غير موجود.', 404);
+        }
+
+        $history = $reqModel->history($id);
+
+        // Fetch eligible verified providers for this request
+        $serviceId = (int)$request['service_id'];
+        $db = Database::getInstance();
+        $sql = "SELECT pp.id as provider_id, u.id as user_id, u.name as name, u.phone as phone,
+                       pp.profession as profession, pp.avg_rating as avg_rating, pp.is_verified,
+                       pp.experience_years
+                FROM provider_profiles pp
+                JOIN users u ON u.id = pp.user_id
+                JOIN provider_services ps ON ps.provider_id = pp.id
+                WHERE ps.service_id = :service_id
+                  AND u.role = 'provider'
+                  AND u.is_active = 1
+                  AND pp.is_verified = 1
+                ORDER BY pp.avg_rating DESC, pp.experience_years DESC";
+        $stmt = $db->prepare($sql);
+        $stmt->execute(['service_id' => $serviceId]);
+        $providers = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        if (empty($providers)) {
+            $providers = $db->query("SELECT pp.id as provider_id, u.id as user_id, u.name as name, u.phone as phone,
+                                            pp.profession as profession, pp.avg_rating as avg_rating, pp.is_verified,
+                                            pp.experience_years
+                                     FROM provider_profiles pp
+                                     JOIN users u ON u.id = pp.user_id
+                                     WHERE u.role = 'provider' AND u.is_active = 1 AND pp.is_verified = 1
+                                     ORDER BY pp.avg_rating DESC LIMIT 20")->fetchAll(PDO::FETCH_ASSOC);
+        }
+
+        $this->json([
+            'request' => $request,
+            'history' => $history,
+            'eligible_providers' => $providers,
+        ]);
+    }
+
+    public function forwardRequest(int $id): void
+    {
+        $user = $this->requireUser();
+        if (!in_array($user['role'], ['admin', 'employee'], true)) {
+            $this->error('غير مصرح لك بتوجيه الطلب.', 403);
+        }
+
+        $data = $this->getPayload();
+        $providerProfileId = (int)($data['provider_id'] ?? 0);
+        $price = (float)($data['price'] ?? 0);
+        $notes = trim((string)($data['notes'] ?? ''));
+
+        if ($providerProfileId <= 0) {
+            $this->error('يرجى اختيار مقدم الخدمة.', 422);
+        }
+        if ($price <= 0) {
+            $this->error('يرجى تحديد السعر المعتمد للخدمة.', 422);
+        }
+
+        $db = Database::getInstance();
+        $reqModel = new ServiceRequest();
+        $request = $reqModel->find($id);
+        if (!$request) {
+            $this->error('الطلب غير موجود.', 404);
+        }
+
+        if (in_array($request['status'], ['completed', 'cancelled'], true)) {
+            $this->error('لا يمكن توجيه طلب مكتمل أو ملغي.', 422);
+        }
+
+        $profile = (new ProviderProfile())->find($providerProfileId);
+        if (!$profile) {
+            $this->error('مقدم الخدمة المحدد غير موجود.', 404);
+        }
+
+        $providerUser = (new User())->find((int)$profile['user_id']);
+        $providerName = $providerUser['name'] ?? 'مقدم الخدمة';
+
+        $db->beginTransaction();
+        try {
+            $oldStatus = $request['status'];
+
+            // Insert approved quote so system-wide billing and agreement work seamlessly
+            $stmt = $db->prepare("INSERT INTO request_quotes (request_id, provider_id, total_price, details, status, decided_at, created_at)
+                                  VALUES (:r_id, :p_id, :price, :details, 'approved', NOW(), NOW())");
+            $quoteDetails = !empty($notes) ? $notes : "تم اعتماد وتحديد السعر بواسطة إدارة المنصة ({$user['name']})";
+            $stmt->execute([
+                'r_id' => $id,
+                'p_id' => $providerProfileId,
+                'price' => $price,
+                'details' => $quoteDetails,
+            ]);
+            $quoteId = (int)$db->lastInsertId();
+
+            // Update service request
+            $stmt = $db->prepare("UPDATE service_requests
+                                  SET provider_id = :provider_id,
+                                      status = 'accepted',
+                                      final_price = :price,
+                                      quote_id = :quote_id,
+                                      updated_at = NOW()
+                                  WHERE id = :id");
+            $stmt->execute([
+                'provider_id' => $providerProfileId,
+                'price' => $price,
+                'quote_id' => $quoteId,
+                'id' => $id,
+            ]);
+
+            // Log status history
+            $stmt = $db->prepare("INSERT INTO request_status_history (request_id, changed_by, old_status, new_status, changed_at)
+                                  VALUES (:req_id, :user_id, :old_status, 'accepted', NOW())");
+            $stmt->execute([
+                'req_id' => $id,
+                'user_id' => $user['id'],
+                'old_status' => $oldStatus,
+            ]);
+
+            $db->commit();
+        } catch (Throwable $e) {
+            if ($db->inTransaction()) $db->rollBack();
+            $this->error('حدث خطأ أثناء اعتماد وتوجيه الطلب: ' . $e->getMessage(), 500);
+        }
+
+        // Send notifications
+        $formattedPrice = number_format($price, 0) . ' ر.ي';
+        try {
+            FcmService::sendToUser(
+                (int)$request['customer_id'],
+                'تم قبول طلبك وتوجيهه لمقدم الخدمة 🛠️',
+                "تم اعتماد طلبك #{$request['request_number']} وتوجيهه إلى ({$providerName}) بسعر معتمد {$formattedPrice}.",
+                ['request_id' => (string)$id, 'type' => 'request_accepted_by_admin']
+            );
+        } catch (Throwable $e) {
+            error_log('Failed to send customer FCM: ' . $e->getMessage());
+        }
+
+        try {
+            FcmService::sendToUser(
+                (int)$profile['user_id'],
+                'تم تحويل طلب خدمة إليك من الإدارة 📌',
+                "تم توجيه الطلب #{$request['request_number']} إليك بسعر معتمد {$formattedPrice}. يرجى التنسيق والبدء بالتنفيذ.",
+                ['request_id' => (string)$id, 'type' => 'request_assigned_by_admin']
+            );
+        } catch (Throwable $e) {
+            error_log('Failed to send provider FCM: ' . $e->getMessage());
+        }
+
+        ActivityLog::log((int)$user['id'], 'forward_request', "قبول وتوجيه الطلب #{$id} إلى المزود #{$providerProfileId} بالسعر {$price}");
+
+        $this->json([
+            'message' => 'تم قبول الطلب وتوجيهه لمقدم الخدمة بنجاح وتحديد السعر المعتمد.',
+            'request_id' => $id,
+            'provider_id' => $providerProfileId,
+            'price' => $price,
+            'status' => 'accepted',
+        ]);
+    }
+
+    public function cancelByManagement(int $id): void
+    {
+        $user = $this->requireUser();
+        if (!in_array($user['role'], ['admin', 'employee'], true)) {
+            $this->error('غير مصرح لك بإلغاء الطلب.', 403);
+        }
+
+        $data = $this->getPayload();
+        $reason = trim((string)($data['reason'] ?? ''));
+        if (empty($reason)) {
+            $reason = 'تم الإلغاء بواسطة إدارة المنصة';
+        }
+
+        $db = Database::getInstance();
+        $reqModel = new ServiceRequest();
+        $request = $reqModel->find($id);
+        if (!$request) {
+            $this->error('الطلب غير موجود.', 404);
+        }
+
+        if ($request['status'] === 'completed') {
+            $this->error('لا يمكن إلغاء طلب مكتمل بالفعل.', 422);
+        }
+
+        $oldStatus = $request['status'];
+
+        $db->beginTransaction();
+        try {
+            $existingNotes = $request['notes'] ?? '';
+            $updatedNotes = trim($existingNotes . "\n[إلغاء الإدارة]: " . $reason);
+
+            $stmt = $db->prepare("UPDATE service_requests
+                                  SET status = 'cancelled',
+                                      notes = :notes,
+                                      updated_at = NOW()
+                                  WHERE id = :id");
+            $stmt->execute(['notes' => $updatedNotes, 'id' => $id]);
+
+            $stmt = $db->prepare("INSERT INTO request_status_history (request_id, changed_by, old_status, new_status, changed_at)
+                                  VALUES (:req_id, :user_id, :old_status, 'cancelled', NOW())");
+            $stmt->execute([
+                'req_id' => $id,
+                'user_id' => $user['id'],
+                'old_status' => $oldStatus,
+            ]);
+
+            $db->commit();
+        } catch (Throwable $e) {
+            if ($db->inTransaction()) $db->rollBack();
+            $this->error('حدث خطأ أثناء إلغاء الطلب: ' . $e->getMessage(), 500);
+        }
+
+        try {
+            FcmService::sendToUser(
+                (int)$request['customer_id'],
+                "تم إلغاء الطلب #{$request['request_number']}",
+                "تم إلغاء طلبك من قبل إدارة المنصة. السبب: {$reason}",
+                ['request_id' => (string)$id, 'type' => 'request_cancelled_by_admin']
+            );
+        } catch (Throwable $e) {
+            error_log('Failed to send customer FCM: ' . $e->getMessage());
+        }
+
+        if (!empty($request['provider_id'])) {
+            try {
+                $profile = (new ProviderProfile())->find((int)$request['provider_id']);
+                if ($profile) {
+                    FcmService::sendToUser(
+                        (int)$profile['user_id'],
+                        "تم إلغاء الطلب #{$request['request_number']}",
+                        "تم إلغاء هذا الطلب من قبل الإدارة.",
+                        ['request_id' => (string)$id, 'type' => 'request_cancelled_by_admin']
+                    );
+                }
+            } catch (Throwable $e) {
+                error_log('Failed to send provider FCM: ' . $e->getMessage());
+            }
+        }
+
+        ActivityLog::log((int)$user['id'], 'cancel_request', "إلغاء الطلب #{$id} بواسطة الإدارة - السبب: {$reason}");
+
+        $this->json([
+            'message' => 'تم إلغاء الطلب بنجاح.',
+            'request_id' => $id,
+            'status' => 'cancelled',
+        ]);
+    }
+
+    public function updateRequestStatusByManagement(int $id): void
+    {
+        $user = $this->requireUser();
+        if (!in_array($user['role'], ['admin', 'employee'], true)) {
+            $this->error('غير مصرح لك.', 403);
+        }
+
+        $data = $this->getPayload();
+        $status = trim((string)($data['status'] ?? ''));
+        $allowed = ['pending', 'accepted', 'in_progress', 'awaiting_confirmation', 'completed', 'cancelled'];
+        if (!in_array($status, $allowed, true)) {
+            $this->error('حالة غير صالحة.', 422);
+        }
+
+        $db = Database::getInstance();
+        $reqModel = new ServiceRequest();
+        $request = $reqModel->find($id);
+        if (!$request) $this->error('الطلب غير موجود.', 404);
+
+        $oldStatus = $request['status'];
+        $db->beginTransaction();
+        try {
+            $stmt = $db->prepare("UPDATE service_requests SET status = :status, updated_at = NOW() WHERE id = :id");
+            $stmt->execute(['status' => $status, 'id' => $id]);
+
+            $stmt = $db->prepare("INSERT INTO request_status_history (request_id, changed_by, old_status, new_status, changed_at) VALUES (:r, :u, :old, :new, NOW())");
+            $stmt->execute(['r' => $id, 'u' => $user['id'], 'old' => $oldStatus, 'new' => $status]);
+            $db->commit();
+        } catch (Throwable $e) {
+            if ($db->inTransaction()) $db->rollBack();
+            $this->error('فشل تحديث الحالة.', 500);
+        }
+
+        ActivityLog::log((int)$user['id'], 'update_request_status', "تحديث حالة الطلب #{$id} إلى {$status}");
+
+        $this->json([
+            'message' => 'تم تحديث حالة الطلب بنجاح.',
+            'status' => $status,
+        ]);
     }
 
     public function employeeComplaints(): void
