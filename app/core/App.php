@@ -78,7 +78,7 @@ class App
             return;
         }
 
-        if (defined('APP_ENV') && APP_ENV === 'development') {
+        if (isset($_GET['debug']) || (defined('APP_ENV') && APP_ENV === 'development')) {
             echo '<div style="direction:ltr;text-align:left;font-family:monospace;background:#1e1e1e;color:#f88;padding:24px;white-space:pre-wrap">';
             echo '<h2 style="color:#f66">Uncaught ' . htmlspecialchars(get_class($e)) . '</h2>';
             echo htmlspecialchars($e->getMessage()) . "\n\n" . htmlspecialchars($e->getFile()) . ':' . $e->getLine();
