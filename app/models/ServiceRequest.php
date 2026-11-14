@@ -6,14 +6,14 @@ class ServiceRequest extends Model
     protected string $table = 'service_requests';
 
     private array $allowedTransitions = [
-        'new'         => ['pending', 'cancelled'],
+        'new'         => ['pending', 'accepted', 'rejected', 'cancelled'],
         'pending'     => ['accepted', 'rejected', 'cancelled'],
-        'accepted'    => ['in_progress', 'cancelled'],
-        'in_progress' => ['awaiting_confirmation'],
-        'awaiting_confirmation' => ['in_progress'],
+        'accepted'    => ['in_progress', 'cancelled', 'rejected'],
+        'in_progress' => ['awaiting_confirmation', 'cancelled'],
+        'awaiting_confirmation' => ['in_progress', 'completed'],
         'completed'   => [],
         'cancelled'   => [],
-        'rejected'    => [],
+        'rejected'    => ['pending', 'cancelled'],
     ];
 
     public function createRequest(array $data): int
@@ -101,7 +101,8 @@ class ServiceRequest extends Model
             return (int)$request['provider_id'] === $providerId;
         }
 
-        if ($request['status'] !== 'pending' || !$this->providerEligibleForRequest($providerId, $request)) return false;
+        if (!in_array($request['status'], ['new', 'pending'], true)) return false;
+        if (!$this->providerEligibleForRequest($providerId, $request)) return false;
         $stmt = $this->db->prepare('SELECT 1 FROM provider_rejections WHERE request_id = :r AND provider_id = :p');
         $stmt->execute(['r' => (int)$request['id'], 'p' => $providerId]);
         return !$stmt->fetchColumn();
@@ -126,7 +127,14 @@ class ServiceRequest extends Model
         // Provider actions must always belong to the authenticated provider.
         if ($providerId !== null) {
             if (!$this->providerCanAccess($providerId, $request)) return false;
-            if ($newStatus === 'accepted' && !$this->providerEligibleForRequest($providerId, $request)) return false;
+            if ($newStatus === 'accepted') {
+                if (!empty($request['provider_id']) && (int)$request['provider_id'] === $providerId) {
+                    $u = (new User())->find((int)$this->scalar("SELECT user_id FROM provider_profiles WHERE id = :p", ['p' => $providerId]));
+                    if (!$u || $u['role'] !== 'provider' || (int)$u['is_active'] !== 1) return false;
+                } else {
+                    if (!$this->providerEligibleForRequest($providerId, $request)) return false;
+                }
+            }
         }
 
         // Compare-and-set on the old status prevents two simultaneous requests
@@ -175,9 +183,8 @@ class ServiceRequest extends Model
             $stmt = $this->db->prepare("SELECT * FROM service_requests WHERE id = :id FOR UPDATE");
             $stmt->execute(['id' => $requestId]);
             $request = $stmt->fetch(PDO::FETCH_ASSOC);
-            if (!$request || $request['status'] !== 'pending'
-                || !$this->providerCanAccess($providerId, $request)
-                || !$this->providerEligibleForRequest($providerId, $request)) {
+            if (!$request || !in_array($request['status'], ['new', 'pending'], true)
+                || !$this->providerCanAccess($providerId, $request)) {
                 $this->db->rollBack();
                 return false;
             }
@@ -185,16 +192,16 @@ class ServiceRequest extends Model
             $stmt->execute(['r' => $requestId, 'p' => $providerId]);
             // A refusal affects this provider only, not requests accepted by another provider.
             if (!empty($request['provider_id'])) {
-                $stmt = $this->db->prepare("UPDATE service_requests SET provider_id = NULL WHERE id = :id AND status = 'pending' AND provider_id = :p");
+                $stmt = $this->db->prepare("UPDATE service_requests SET provider_id = NULL WHERE id = :id AND status IN ('new', 'pending') AND provider_id = :p");
                 $stmt->execute(['id' => $requestId, 'p' => $providerId]);
-                $this->logStatus($requestId, $changedBy, 'pending', 'rejected');
+                $this->logStatus($requestId, $changedBy, $request['status'], 'rejected');
                 $this->logStatus($requestId, $changedBy, 'rejected', 'pending');
             }
             $this->db->commit();
             return true;
         } catch (Throwable $e) {
             if ($this->db->inTransaction()) $this->db->rollBack();
-            error_log('Request rejection failed (' . get_class($e) . ')');
+            error_log('Request rejection failed (' . get_class($e) . '): ' . $e->getMessage());
             return false;
         }
     }

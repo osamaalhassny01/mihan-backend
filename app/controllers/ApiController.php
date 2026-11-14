@@ -855,8 +855,17 @@ class ApiController extends Controller
         $reqModel = new ServiceRequest();
         $request = $reqModel->find((int)$id);
 
-        if (!$request || !$reqModel->providerCanAccess($pId, $request)) {
-            $this->error('لا يمكنك قبول هذا الطلب', 403);
+        if (!$request) {
+            $this->error('الطلب غير موجود', 404);
+        }
+
+        if ($request['status'] === 'accepted' && !empty($request['provider_id']) && (int)$request['provider_id'] === $pId) {
+            $this->json(null, 200, 'الطلب مقبول بالفعل ومسند إليك');
+            return;
+        }
+
+        if (!$reqModel->providerCanAccess($pId, $request)) {
+            $this->error('لا يمكنك قبول هذا الطلب (غير متاح أو تم قبوله من مقدم خدمة آخر)', 403);
         }
 
         // The model assigns and accepts in one conditional update.
@@ -871,7 +880,7 @@ class ApiController extends Controller
             ActivityLog::log((int)$user['id'], 'accept_request', "قبول الطلب #{$id}");
             $this->json(null, 200, 'تم قبول الطلب بنجاح');
         } else {
-            $this->error('تعذر تغيير حالة الطلب', 422);
+            $this->error('تعذر تغيير حالة الطلب؛ يرجى التأكد من حالة حسابك أو التواصل مع الإدارة', 422);
         }
     }
 
@@ -884,7 +893,11 @@ class ApiController extends Controller
         $reqModel = new ServiceRequest();
         $request = $reqModel->find((int)$id);
 
-        if (!$request || !$reqModel->providerCanAccess($pId, $request)) {
+        if (!$request) {
+            $this->error('الطلب غير موجود', 404);
+        }
+
+        if (!$reqModel->providerCanAccess($pId, $request)) {
             $this->error('لا يمكنك رفض هذا الطلب أو تم إسناده مسبقاً', 403);
         }
 

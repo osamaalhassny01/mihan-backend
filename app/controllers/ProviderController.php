@@ -118,7 +118,7 @@ public function finance()
         Auth::requirePermission('provide_service');
         $reqModel = new ServiceRequest();
         $request = $reqModel->find((int)$id);
-        if (!$request || !$reqModel->providerCanAccess((int)$this->profile['id'], $request) || $request['status'] !== 'pending') {
+        if (!$request || !$reqModel->providerCanAccess((int)$this->profile['id'], $request) || !in_array($request['status'], ['new', 'pending'], true)) {
             Session::flash('error', 'هذا الطلب غير متاح لك أو لم يعد متاحًا للقبول');
             $this->redirect('/provider/requests');
             return;
@@ -139,7 +139,7 @@ public function finance()
         Auth::requirePermission('provide_service');
         $reqModel = new ServiceRequest();
         $request = $reqModel->find((int)$id);
-        if (!$request || !$reqModel->providerCanAccess((int)$this->profile['id'], $request) || $request['status'] !== 'pending') { Session::flash('error', 'هذا الطلب غير متاح لك أو لم يعد متاحًا للرفض'); $this->redirect('/provider/requests'); return; }
+        if (!$request || !$reqModel->providerCanAccess((int)$this->profile['id'], $request) || !in_array($request['status'], ['new', 'pending'], true)) { Session::flash('error', 'هذا الطلب غير متاح لك أو لم يعد متاحًا للرفض'); $this->redirect('/provider/requests'); return; }
         if ($reqModel->rejectAndRequeue((int)$id, Auth::id(), (int)$this->profile['id'])) {
             (new Notification())->notify($request['customer_id'], 'تم رفض الطلب من مقدم الخدمة', 'اعتذر مقدم الخدمة عن تنفيذ الطلب، وأصبح الطلب متاحًا لاختيار مقدم خدمة آخر', '/customer/requests/' . $id . '/recommendations');
             ActivityLog::log(Auth::id(), 'reject_request', "رفض وإعادة طرح الطلب #$id");

@@ -4,10 +4,10 @@
         <p class="text-muted mb-0">مراجعة وتدقيق بيانات وشهادات المهنيين الراغبين بالانضمام للمنصة والبت فيها إدارياً</p>
     </div>
     <div class="btn-group">
-        <a href="/admin/provider-applications" class="btn btn-sm <?= empty($currentStatus) ? 'btn-primary' : 'btn-outline-primary' ?>">الكل</a>
-        <a href="/admin/provider-applications?status=pending" class="btn btn-sm <?= $currentStatus === 'pending' ? 'btn-primary' : 'btn-outline-primary' ?>">قيد الانتظار</a>
-        <a href="/admin/provider-applications?status=approved" class="btn btn-sm <?= $currentStatus === 'approved' ? 'btn-primary' : 'btn-outline-primary' ?>">المقبولين</a>
-        <a href="/admin/provider-applications?status=rejected" class="btn btn-sm <?= $currentStatus === 'rejected' ? 'btn-primary' : 'btn-outline-primary' ?>">المرفوضين</a>
+        <a href="<?= url('/admin/provider-applications') ?>" class="btn btn-sm <?= empty($currentStatus) ? 'btn-primary' : 'btn-outline-primary' ?>">الكل</a>
+        <a href="<?= url('/admin/provider-applications?status=pending') ?>" class="btn btn-sm <?= $currentStatus === 'pending' ? 'btn-primary' : 'btn-outline-primary' ?>">قيد الانتظار</a>
+        <a href="<?= url('/admin/provider-applications?status=approved') ?>" class="btn btn-sm <?= $currentStatus === 'approved' ? 'btn-primary' : 'btn-outline-primary' ?>">المقبولين</a>
+        <a href="<?= url('/admin/provider-applications?status=rejected') ?>" class="btn btn-sm <?= $currentStatus === 'rejected' ? 'btn-primary' : 'btn-outline-primary' ?>">المرفوضين</a>
     </div>
 </div>
 
@@ -59,7 +59,7 @@
                                 </td>
                                 <td class="small text-muted"><?= date('Y/m/d H:i', strtotime($app['created_at'])) ?></td>
                                 <td>
-                                    <a href="/admin/provider-applications/<?= $app['id'] ?>" class="btn btn-sm btn-outline-primary">
+                                    <a href="<?= url('/admin/provider-applications/' . $app['id']) ?>" class="btn btn-sm btn-outline-primary">
                                         <i class="bi bi-card-checklist"></i> تدقيق وقرار
                                     </a>
                                 </td>

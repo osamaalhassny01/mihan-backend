@@ -1,5 +1,5 @@
 <div class="mb-4">
-    <a href="/admin/provider-applications" class="btn btn-outline-secondary btn-sm mb-2">
+    <a href="<?= url('/admin/provider-applications') ?>" class="btn btn-outline-secondary btn-sm mb-2">
         <i class="bi bi-arrow-right"></i> العودة لقائمة الطلبات
     </a>
     <h2 class="h4 mb-1">مراجعة طلب انضمام: <?= htmlspecialchars($application['user_name']) ?></h2>
@@ -86,7 +86,7 @@
                 <?php endif; ?>
 
                 <?php if ($application['status'] !== 'approved'): ?>
-                    <form method="POST" action="/admin/provider-applications/<?= $application['id'] ?>/approve" class="mb-3">
+                    <form method="POST" action="<?= url('/admin/provider-applications/' . $application['id'] . '/approve') ?>" class="mb-3">
                         <?= csrf_field() ?>
                         <div class="mb-3">
                             <label class="form-label small">ملاحظات إدارية (اختياري)</label>
@@ -97,7 +97,7 @@
                         </button>
                     </form>
 
-                    <form method="POST" action="/admin/provider-applications/<?= $application['id'] ?>/reject">
+                    <form method="POST" action="<?= url('/admin/provider-applications/' . $application['id'] . '/reject') ?>">
                         <?= csrf_field() ?>
                         <button type="submit" class="btn btn-outline-danger w-100" onclick="return confirm('هل أنت متأكد من رفض هذا الطلب؟')">
                             <i class="bi bi-x-circle"></i> رفض الطلب

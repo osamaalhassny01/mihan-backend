@@ -4,7 +4,7 @@
         <p class="text-muted mb-0">عرض وتصفية المهنيين ومتابعة حالة التوثيق والاعتماد</p>
     </div>
     <div class="d-flex gap-2">
-        <a href="/admin/provider-applications" class="btn btn-outline-primary btn-sm">
+        <a href="<?= url('/admin/provider-applications') ?>" class="btn btn-outline-primary btn-sm">
             <i class="fa-solid fa-user-check me-1"></i> طلبات الانضمام الجديدة
         </a>
     </div>
