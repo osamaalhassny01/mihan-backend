@@ -380,11 +380,11 @@ class ServiceRequest extends Model
                        l.name_ar as location_name_ar, l.name_en as location_name_en,
                        pp.id as provider_profile_id, pp.profession as provider_profession,
                        pp.experience_years as provider_experience_years, pp.avg_rating as provider_avg_rating,
-                       pp.is_verified as provider_is_verified, pu.name as provider_name,
+                       pp.is_verified as provider_is_verified, pu.name as provider_name, pu.phone as provider_phone,
                        q.total_price AS quoted_price, q.details AS quote_details, q.status AS quote_status, q.visit_at, q.decided_at AS quote_decided_at, q.created_at AS quote_created_at
                 FROM service_requests sr
-                JOIN services s ON s.id = sr.service_id
-                JOIN users c ON c.id = sr.customer_id
+                LEFT JOIN services s ON s.id = sr.service_id
+                LEFT JOIN users c ON c.id = sr.customer_id
                 LEFT JOIN locations l ON l.id = sr.location_id
                 LEFT JOIN provider_profiles pp ON pp.id = sr.provider_id
                 LEFT JOIN users pu ON pu.id = pp.user_id

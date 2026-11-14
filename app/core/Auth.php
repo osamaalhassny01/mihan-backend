@@ -115,6 +115,10 @@ class Auth
     public static function requireRole(string ...$roles): void
     {
         self::requireLogin();
+        // Super admin has full supervisory access to all roles and panels
+        if (self::role() === 'admin') {
+            return;
+        }
         if (!in_array(self::role(), $roles, true)) {
             http_response_code(403);
             require __DIR__ . '/../views/errors/403.php';
@@ -217,16 +221,19 @@ class Auth
             return !empty($defaults[$role][$permission]);
         }
 
-        // Admin has access to standard administrative functions
-        if ($role === 'admin' && empty(self::$permissionsCache['admin'][$permission])) {
-            $standardAdmin = [
-                'manage_users', 'manage_categories', 'manage_locations', 'verify_providers',
-                'manage_complaints', 'view_reports', 'manage_requests', 'manage_finance',
-                'manage_ai', 'manage_settings', 'create_request', 'provide_service',
-                'manage_employees', 'manage_payouts', 'view_finance', 'view_conversations',
-                'manage_reviews', 'view_dashboard', 'view_providers',
+        // Super Admin has unrestricted permissions across platform
+        if ($role === 'admin') {
+            return true;
+        }
+
+        // Employee standard operational permissions fallback
+        if ($role === 'employee' && empty(self::$permissionsCache['employee'][$permission])) {
+            $standardEmployee = [
+                'view_providers', 'manage_reviews', 'view_finance',
+                'view_conversations', 'manage_complaints',
+                'manage_requests', 'view_reports', 'view_dashboard',
             ];
-            if (in_array($permission, $standardAdmin, true)) {
+            if (in_array($permission, $standardEmployee, true)) {
                 return true;
             }
         }

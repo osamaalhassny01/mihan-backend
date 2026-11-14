@@ -14,7 +14,7 @@ require_once __DIR__ . '/../services/AnalyticsService.php';
 
 class EmployeeController extends Controller
 {
-    public function __construct(){ Auth::requireRole('employee'); }
+    public function __construct(){ Auth::requireRole('employee', 'admin'); }
 
     public function dashboard()
     {
@@ -73,12 +73,17 @@ class EmployeeController extends Controller
 
         $db = Database::getInstance();
         $serviceId = (int)($request['service_id'] ?? 0);
-        $providers = $db->query("SELECT pp.id, u.name, pp.profession, pp.avg_rating, pp.experience_years
-                                 FROM provider_profiles pp
-                                 JOIN users u ON u.id = pp.user_id
-                                 JOIN provider_services ps ON ps.provider_id = pp.id
-                                 WHERE ps.service_id = {$serviceId} AND u.is_active = 1 AND pp.is_verified = 1
-                                 ORDER BY pp.avg_rating DESC")->fetchAll(PDO::FETCH_ASSOC);
+        $providers = [];
+        if ($serviceId > 0) {
+            $stmt = $db->prepare("SELECT pp.id, u.name, pp.profession, pp.avg_rating, pp.experience_years
+                                  FROM provider_profiles pp
+                                  JOIN users u ON u.id = pp.user_id
+                                  JOIN provider_services ps ON ps.provider_id = pp.id
+                                  WHERE ps.service_id = :sid AND u.is_active = 1 AND pp.is_verified = 1
+                                  ORDER BY pp.avg_rating DESC");
+            $stmt->execute(['sid' => $serviceId]);
+            $providers = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        }
         if (empty($providers)) {
             $providers = $db->query("SELECT pp.id, u.name, pp.profession, pp.avg_rating, pp.experience_years
                                      FROM provider_profiles pp
