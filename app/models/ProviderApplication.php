@@ -46,17 +46,22 @@ class ProviderApplication extends Model
 
     public function allWithUserDetails(?string $status = null): array
     {
-        self::ensureTable();
-        $sql = "SELECT pa.*, u.name as user_name, u.email as user_email, u.phone as user_phone, u.is_active as user_is_active
-                FROM provider_applications pa
-                JOIN users u ON u.id = pa.user_id";
-        $params = [];
-        if ($status) {
-            $sql .= " WHERE pa.status = :status";
-            $params['status'] = $status;
+        try {
+            self::ensureTable();
+            $sql = "SELECT pa.*, u.name as user_name, u.email as user_email, u.phone as user_phone, u.is_active as user_is_active
+                    FROM provider_applications pa
+                    JOIN users u ON u.id = pa.user_id";
+            $params = [];
+            if ($status) {
+                $sql .= " WHERE pa.status = :status";
+                $params['status'] = $status;
+            }
+            $sql .= " ORDER BY pa.created_at DESC";
+            return $this->query($sql, $params);
+        } catch (Throwable $e) {
+            error_log('Error in allWithUserDetails: ' . $e->getMessage());
+            return [];
         }
-        $sql .= " ORDER BY pa.created_at DESC";
-        return $this->query($sql, $params);
     }
 
     public function findWithDetails(int $id): ?array

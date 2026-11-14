@@ -1650,24 +1650,38 @@ class ApiController extends Controller
         $employeesCount = (int)$db->query("SELECT COUNT(*) c FROM users WHERE role = 'employee'")->fetchColumn();
         $requestsCount = (int)$db->query("SELECT COUNT(*) c FROM service_requests")->fetchColumn();
         $pendingRequestsCount = (int)$db->query("SELECT COUNT(*) c FROM service_requests WHERE status IN ('new', 'pending')")->fetchColumn();
-        $totalRevenue = (float)$db->query("SELECT COALESCE(SUM(total_amount), 0) s FROM invoices WHERE status = 'paid'")->fetchColumn();
-        $platformCommission = (float)$db->query("SELECT COALESCE(SUM(commission_amount), 0) s FROM platform_commissions")->fetchColumn();
+        $totalRevenue = 0.0;
+        try {
+            $totalRevenue = (float)$db->query("SELECT COALESCE(SUM(total_amount), 0) s FROM invoices WHERE payment_status = 'paid'")->fetchColumn();
+        } catch (Throwable $e) {}
 
-        $recentRequests = $db->query("SELECT sr.*, s.name_ar as service_name, s.name_ar as service_name_ar,
-                                             c.name as customer_name, c.phone as customer_phone,
-                                             pu.name as provider_name, pp.profession as provider_profession,
-                                             COALESCE(sr.final_price, q.total_price, sr.budget) as display_price
-                                      FROM service_requests sr
-                                      LEFT JOIN services s ON s.id = sr.service_id
-                                      LEFT JOIN users c ON c.id = sr.customer_id
-                                      LEFT JOIN provider_profiles pp ON pp.id = sr.provider_id
-                                      LEFT JOIN users pu ON pu.id = pp.user_id
-                                      LEFT JOIN request_quotes q ON q.id = sr.quote_id
-                                      ORDER BY sr.created_at DESC LIMIT 15")->fetchAll(PDO::FETCH_ASSOC);
+        $platformCommission = 0.0;
+        try {
+            $platformCommission = (float)$db->query("SELECT COALESCE(SUM(amount), 0) s FROM platform_commissions")->fetchColumn();
+        } catch (Throwable $e) {}
 
-        ProviderApplication::ensureTable();
-        $pendingAppsCount = (int)$db->query("SELECT COUNT(*) c FROM provider_applications WHERE status = 'pending'")->fetchColumn();
-        $recentApplications = (new ProviderApplication())->allWithUserDetails('pending');
+        $recentRequests = [];
+        try {
+            $recentRequests = $db->query("SELECT sr.*, s.name_ar as service_name, s.name_ar as service_name_ar,
+                                                 c.name as customer_name, c.phone as customer_phone,
+                                                 pu.name as provider_name, pp.profession as provider_profession,
+                                                 COALESCE(sr.final_price, q.total_price, sr.budget) as display_price
+                                          FROM service_requests sr
+                                          LEFT JOIN services s ON s.id = sr.service_id
+                                          LEFT JOIN users c ON c.id = sr.customer_id
+                                          LEFT JOIN provider_profiles pp ON pp.id = sr.provider_id
+                                          LEFT JOIN users pu ON pu.id = pp.user_id
+                                          LEFT JOIN request_quotes q ON q.id = sr.quote_id
+                                          ORDER BY sr.created_at DESC LIMIT 15")->fetchAll(PDO::FETCH_ASSOC);
+        } catch (Throwable $e) {}
+
+        $pendingAppsCount = 0;
+        $recentApplications = [];
+        try {
+            ProviderApplication::ensureTable();
+            $pendingAppsCount = (int)$db->query("SELECT COUNT(*) c FROM provider_applications WHERE status = 'pending'")->fetchColumn();
+            $recentApplications = (new ProviderApplication())->allWithUserDetails('pending');
+        } catch (Throwable $e) {}
 
         $this->json([
             'users_count'                => $usersCount,

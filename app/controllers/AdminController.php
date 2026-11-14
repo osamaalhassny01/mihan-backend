@@ -45,7 +45,10 @@ class AdminController extends Controller
                                       LEFT JOIN request_quotes q ON q.id = sr.quote_id
                                       ORDER BY sr.created_at DESC LIMIT 8")->fetchAll(PDO::FETCH_ASSOC);
 
-        $pendingApplications = (new ProviderApplication())->allWithUserDetails('pending');
+        $pendingApplications = [];
+        try {
+            $pendingApplications = (new ProviderApplication())->allWithUserDetails('pending');
+        } catch (Throwable $e) {}
 
         $this->view('admin/dashboard', compact('overview', 'requestsByMonth', 'servicesByCategory', 'topProviders', 'recentActivity', 'recentRequests', 'pendingApplications')
             + ['title' => __('dashboard')], 'dashboard');
