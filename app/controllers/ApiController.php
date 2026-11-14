@@ -1652,17 +1652,23 @@ class ApiController extends Controller
                                       LEFT JOIN request_quotes q ON q.id = sr.quote_id
                                       ORDER BY sr.created_at DESC LIMIT 15")->fetchAll(PDO::FETCH_ASSOC);
 
+        ProviderApplication::ensureTable();
+        $pendingAppsCount = (int)$db->query("SELECT COUNT(*) c FROM provider_applications WHERE status = 'pending'")->fetchColumn();
+        $recentApplications = (new ProviderApplication())->allWithUserDetails('pending');
+
         $this->json([
-            'users_count'            => $usersCount,
-            'customers_count'        => $customersCount,
-            'providers_count'        => $providersCount,
-            'employees_count'        => $employeesCount,
-            'requests_count'         => $requestsCount,
-            'pending_requests_count' => $pendingRequestsCount,
-            'total_revenue'          => $totalRevenue,
-            'platform_commission'    => $platformCommission,
-            'recent_requests'        => $recentRequests,
-            'web_portal_url'         => defined('APP_URL') ? APP_URL . '/admin/dashboard' : '/admin/dashboard',
+            'users_count'                => $usersCount,
+            'customers_count'            => $customersCount,
+            'providers_count'            => $providersCount,
+            'employees_count'            => $employeesCount,
+            'requests_count'             => $requestsCount,
+            'pending_requests_count'     => $pendingRequestsCount,
+            'pending_applications_count' => $pendingAppsCount,
+            'total_revenue'              => $totalRevenue,
+            'platform_commission'        => $platformCommission,
+            'recent_requests'            => $recentRequests,
+            'recent_applications'        => $recentApplications,
+            'web_portal_url'             => defined('APP_URL') ? APP_URL . '/admin/dashboard' : '/admin/dashboard',
         ]);
     }
 
@@ -1778,6 +1784,30 @@ class ApiController extends Controller
 
         ActivityLog::log((int)$user['id'], 'provider_application', "تقديم طلب انضمام كمقدم خدمة #{$appId}");
 
+        // Deliver notification to all admins and platform employees
+        $notifModel = new Notification();
+        $staffUsers = $db->query("SELECT id FROM users WHERE role IN ('admin', 'employee') AND is_active = 1")->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($staffUsers as $staff) {
+            $notifModel->deliver(
+                (int)$staff['id'],
+                'طلب انضمام مهني جديد 🛠️',
+                "قدّم المهني {$user['name']} طلب انضمام جديد بتخصص {$profession} في {$city}. بانتظار المراجعة والاعتماد.",
+                "/admin/provider-applications/{$appId}",
+                'provider_application',
+                ['application_id' => (string)$appId, 'type' => 'provider_application']
+            );
+        }
+
+        // Deliver confirmation notification to the applicant
+        $notifModel->deliver(
+            (int)$user['id'],
+            'تم استلام طلب انضمامك كمهني 📋',
+            'طلب انضمامك لشبكة مِهَن قيد المراجعة والتدقيق من قبل الإدارة وسنوافيك بالرد فور اتخاذ القرار.',
+            '/provider/profile',
+            'provider_application',
+            ['application_id' => (string)$appId, 'type' => 'provider_application']
+        );
+
         $this->json([
             'application_id' => $appId,
             'status'         => 'pending',
@@ -1838,5 +1868,155 @@ class ApiController extends Controller
             error_log('Failed saving certificate image: ' . $e->getMessage());
         }
         return null;
+    }
+
+    /**
+     * Admin: List provider applications
+     */
+    public function adminProviderApplications(): void
+    {
+        $user = $this->requireUser();
+        if (!in_array($user['role'], ['admin', 'employee'], true)) {
+            $this->error('غير مصرح لك.', 403);
+        }
+
+        $status = $_GET['status'] ?? null;
+        if ($status && !in_array($status, ['pending', 'approved', 'rejected'], true)) {
+            $status = null;
+        }
+
+        $appModel = new ProviderApplication();
+        $applications = $appModel->allWithUserDetails($status);
+        $this->json($applications);
+    }
+
+    /**
+     * Admin: Provider application details
+     */
+    public function adminProviderApplicationDetails($id): void
+    {
+        $user = $this->requireUser();
+        if (!in_array($user['role'], ['admin', 'employee'], true)) {
+            $this->error('غير مصرح لك.', 403);
+        }
+
+        $appModel = new ProviderApplication();
+        $application = $appModel->findWithDetails((int)$id);
+        if (!$application) {
+            $this->error('طلب الانضمام غير موجود', 404);
+        }
+
+        $this->json($application);
+    }
+
+    /**
+     * Admin: Approve provider application
+     */
+    public function adminApproveProviderApplication($id): void
+    {
+        $admin = $this->requireUser();
+        if (!in_array($admin['role'], ['admin', 'employee'], true)) {
+            $this->error('غير مصرح لك.', 403);
+        }
+
+        $appModel = new ProviderApplication();
+        $application = $appModel->findWithDetails((int)$id);
+        if (!$application) {
+            $this->error('طلب الانضمام غير موجود', 404);
+        }
+
+        $userId = (int)$application['user_id'];
+        $data = $this->getPayload();
+        $adminNotes = trim((string)($data['admin_notes'] ?? ''));
+
+        // 1. Update application status
+        $appModel->update((int)$id, [
+            'status'      => 'approved',
+            'admin_notes' => $adminNotes ?: null,
+            'reviewed_by' => (int)$admin['id'],
+            'reviewed_at' => date('Y-m-d H:i:s')
+        ]);
+
+        // 2. Activate user account & role
+        $userModel = new User();
+        $userModel->update($userId, [
+            'role'      => 'provider',
+            'is_active' => 1
+        ]);
+
+        // 3. Mark provider profile verified and available
+        $profModel = new ProviderProfile();
+        $prof = $profModel->findByUser($userId);
+        if ($prof) {
+            $profModel->update((int)$prof['id'], [
+                'is_verified'  => 1,
+                'is_available' => 1
+            ]);
+        }
+
+        // 4. Send notification to the provider
+        $notifModel = new Notification();
+        $notifModel->deliver(
+            $userId,
+            'تهانينا! تم قبول طلبك 🎉',
+            'تمت الموافقة على انضمامك كمقدم خدمة معتمد في منصة مِهَن. يمكنك الآن استقبال الطلبات والعمل مباشرة!',
+            '/provider/dashboard',
+            'application_approved',
+            ['type' => 'application_approved']
+        );
+
+        ActivityLog::log((int)$admin['id'], 'approve_provider', "الموافقة على انضمام مقدم الخدمة {$application['user_name']} (#{$id})");
+
+        $this->json(['success' => true], 200, "تم اعتماد وتفعيل حساب المهني {$application['user_name']} بنجاح");
+    }
+
+    /**
+     * Admin: Reject provider application
+     */
+    public function adminRejectProviderApplication($id): void
+    {
+        $admin = $this->requireUser();
+        if (!in_array($admin['role'], ['admin', 'employee'], true)) {
+            $this->error('غير مصرح لك.', 403);
+        }
+
+        $appModel = new ProviderApplication();
+        $application = $appModel->findWithDetails((int)$id);
+        if (!$application) {
+            $this->error('طلب الانضمام غير موجود', 404);
+        }
+
+        $userId = (int)$application['user_id'];
+        $data = $this->getPayload();
+        $adminNotes = trim((string)($data['admin_notes'] ?? ''));
+
+        // 1. Update application status
+        $appModel->update((int)$id, [
+            'status'      => 'rejected',
+            'admin_notes' => $adminNotes ?: null,
+            'reviewed_by' => (int)$admin['id'],
+            'reviewed_at' => date('Y-m-d H:i:s')
+        ]);
+
+        // 2. Keep user inactive
+        $userModel = new User();
+        $userModel->update($userId, [
+            'is_active' => 0
+        ]);
+
+        // 3. Send notification
+        $notifModel = new Notification();
+        $notifModel->deliver(
+            $userId,
+            'تحديث بشأن طلب الانضمام لمنصة مِهَن',
+            'نأسف لإبلاغك بأنه لم يتم قبول طلبك كمقدم خدمة في الوقت الحالي. يمكنك التواصل مع الدعم لمزيد من التفاصيل.',
+            '/provider/profile',
+            'application_rejected',
+            ['type' => 'application_rejected']
+        );
+
+        ActivityLog::log((int)$admin['id'], 'reject_provider', "رفض طلب انضمام مقدم الخدمة {$application['user_name']} (#{$id})");
+
+        $this->json(['success' => true], 200, "تم رفض طلب الانضمام");
     }
 }

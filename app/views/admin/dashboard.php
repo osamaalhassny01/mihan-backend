@@ -245,6 +245,85 @@
     </div>
   </div>
 </div>
+
+<?php if (!empty($pendingApplications)): ?>
+<!-- ============ PENDING PROVIDER APPLICATIONS BANNER ============ -->
+<div class="card border-0 shadow-sm mb-4" style="border-radius: 22px; border: 1.5px solid #fde68a !important; background: #fffdf5;">
+  <div class="card-header bg-transparent border-0 pt-4 px-4 pb-2 d-flex justify-content-between align-items-center">
+    <div class="d-flex align-items-center gap-2">
+      <div style="width: 42px; height: 42px; border-radius: 12px; background: #fffbeb; color: #d97706; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; border: 1.5px solid #fde68a;">
+        <i class="fa-solid fa-user-check"></i>
+      </div>
+      <div>
+        <h5 class="fw-bold mb-0" style="color: #92400e;">طلبات انضمام المهنيين الجدد (بانتظار الاعتماد)</h5>
+        <small class="text-muted">مهنيون سجلوا رغبتهم بالانضمام لمنصة مِهَن وبانتظار موافقة الإدارة لتفعيل حساباتهم</small>
+      </div>
+    </div>
+    <a href="<?= url('/admin/provider-applications?status=pending') ?>" class="btn btn-sm btn-warning fw-bold px-3 py-1" style="border-radius: 10px;">
+      عرض جميع طلبات المهنيين (<?= count($pendingApplications) ?>)
+    </a>
+  </div>
+  <div class="card-body px-0 pb-0">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead style="background: #fefce8; border-bottom: 2px solid #fef08a;">
+          <tr>
+            <th class="ps-4 py-3" style="color: #854d0e; font-weight: 800; font-size: 0.85rem;">اسم المهني</th>
+            <th class="py-3" style="color: #854d0e; font-weight: 800; font-size: 0.85rem;">التخصص والخبرة</th>
+            <th class="py-3" style="color: #854d0e; font-weight: 800; font-size: 0.85rem;">المدينة / المنطقة</th>
+            <th class="py-3" style="color: #854d0e; font-weight: 800; font-size: 0.85rem;">رقم الهاتف</th>
+            <th class="py-3" style="color: #854d0e; font-weight: 800; font-size: 0.85rem;">الشهادة / الوثيقة</th>
+            <th class="text-end pe-4 py-3" style="color: #854d0e; font-weight: 800; font-size: 0.85rem;">قرار الإدارة</th>
+          </tr>
+        </thead>
+        <tbody>
+          <?php foreach ($pendingApplications as $app): ?>
+            <tr>
+              <td class="ps-4">
+                <div class="fw-bold fs-6" style="color: #0b3734;"><?= e($app['user_name']) ?></div>
+                <div class="small text-muted font-monospace"><i class="fa-solid fa-clock me-1"></i><?= formatDate($app['created_at']) ?></div>
+              </td>
+              <td>
+                <span class="badge" style="background: #ecfdf5; color: #065f46; font-size: 0.85rem;"><?= e($app['profession']) ?></span>
+                <span class="small text-muted ms-1">(<?= (int)$app['years_exp'] ?> سنوات خبرة)</span>
+              </td>
+              <td>
+                <span class="fw-semibold text-secondary"><i class="fa-solid fa-location-dot me-1 text-danger"></i><?= e($app['city'] ?: 'غير محدد') ?></span>
+              </td>
+              <td>
+                <span class="font-monospace fw-bold text-dark"><i class="fa-solid fa-phone me-1 text-muted"></i><?= e($app['user_phone'] ?: '-') ?></span>
+              </td>
+              <td>
+                <?php if (!empty($app['certificate_url'])): ?>
+                  <a href="<?= e($app['certificate_url']) ?>" target="_blank" class="btn btn-xs btn-outline-info px-2 py-1" style="border-radius: 6px; font-size: 0.8rem;">
+                    <i class="fa-solid fa-file-image me-1"></i> عرض الوثيقة
+                  </a>
+                <?php else: ?>
+                  <span class="text-muted small">لا توجد وثيقة</span>
+                <?php endif; ?>
+              </td>
+              <td class="text-end pe-4">
+                <div class="d-inline-flex gap-2">
+                  <form method="POST" action="<?= url('/admin/provider-applications/' . $app['id'] . '/approve') ?>" onsubmit="return confirm('هل أنت متأكد من قبول واعتماد المهني <?= e($app['user_name']) ?>؟')">
+                    <?= csrf_field() ?>
+                    <button type="submit" class="btn btn-sm btn-success fw-bold px-3 py-1" style="border-radius: 8px;">
+                      <i class="fa-solid fa-check me-1"></i> قبول وتفعيل
+                    </button>
+                  </form>
+                  <a href="<?= url('/admin/provider-applications/' . $app['id']) ?>" class="btn btn-sm btn-outline-secondary px-2 py-1" style="border-radius: 8px;">
+                    تفاصيل
+                  </a>
+                </div>
+              </td>
+            </tr>
+          <?php endforeach; ?>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+<?php endif; ?>
+
 <div class="row g-4 mb-4">
   <div class="col-lg-7">
     <div class="card p-4 border-0 shadow-sm h-100" style="border-radius: 22px; border: 1px solid #d4e7e4 !important; background: #ffffff;">

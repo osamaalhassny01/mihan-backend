@@ -45,7 +45,9 @@ class AdminController extends Controller
                                       LEFT JOIN request_quotes q ON q.id = sr.quote_id
                                       ORDER BY sr.created_at DESC LIMIT 8")->fetchAll(PDO::FETCH_ASSOC);
 
-        $this->view('admin/dashboard', compact('overview', 'requestsByMonth', 'servicesByCategory', 'topProviders', 'recentActivity', 'recentRequests')
+        $pendingApplications = (new ProviderApplication())->allWithUserDetails('pending');
+
+        $this->view('admin/dashboard', compact('overview', 'requestsByMonth', 'servicesByCategory', 'topProviders', 'recentActivity', 'recentRequests', 'pendingApplications')
             + ['title' => __('dashboard')], 'dashboard');
     }
 
@@ -1374,11 +1376,14 @@ public function recordPayout()
             ]);
         }
 
-        // 4. Send FCM Notification to the provider
-        FcmService::sendToUser(
+        // 4. Deliver in-app notification & push notification to the provider
+        $notifModel = new Notification();
+        $notifModel->deliver(
             $userId,
             'تهانينا! تم قبول طلبك 🎉',
-            'تمت الموافقة على انضمامك كمقدم خدمة معتمد في منصة مِهَن. يمكنك الآن استقبال الطلبات مباشرة!',
+            'تمت الموافقة على انضمامك كمقدم خدمة معتمد في منصة مِهَن. يمكنك الآن استقبال الطلبات والعمل مباشرة!',
+            '/provider/dashboard',
+            'application_approved',
             ['type' => 'application_approved']
         );
 
@@ -1416,11 +1421,14 @@ public function recordPayout()
             'is_active' => 0
         ]);
 
-        // 3. Send FCM Notification
-        FcmService::sendToUser(
+        // 3. Deliver in-app notification & push notification
+        $notifModel = new Notification();
+        $notifModel->deliver(
             $userId,
             'تحديث بشأن طلب الانضمام لمنصة مِهَن',
             'نأسف لإبلاغك بأنه لم يتم قبول طلبك كمقدم خدمة في الوقت الحالي. يمكنك التواصل مع الدعم لمزيد من التفاصيل.',
+            '/provider/profile',
+            'application_rejected',
             ['type' => 'application_rejected']
         );
 

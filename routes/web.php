@@ -238,6 +238,10 @@ $router->post('/api/admin/requests/{id}/forward', 'ApiController@forwardRequest'
 $router->post('/api/admin/requests/{id}/cancel', 'ApiController@cancelByManagement');
 $router->post('/api/admin/requests/{id}/status', 'ApiController@updateRequestStatusByManagement');
 $router->get('/api/admin/users', 'ApiController@adminUsers');
+$router->get('/api/admin/provider-applications', 'ApiController@adminProviderApplications');
+$router->get('/api/admin/provider-applications/{id}', 'ApiController@adminProviderApplicationDetails');
+$router->post('/api/admin/provider-applications/{id}/approve', 'ApiController@adminApproveProviderApplication');
+$router->post('/api/admin/provider-applications/{id}/reject', 'ApiController@adminRejectProviderApplication');
 
 // -------- Mahir AI API (Flutter) --------
 $router->get('/api/mahir/professions', 'MahirApiController@professions');
