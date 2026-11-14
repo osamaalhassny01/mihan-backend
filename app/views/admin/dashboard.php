@@ -93,19 +93,24 @@
 <!-- ============ ROW 2: OPERATIONS & FINANCIAL KPIS ============ -->
 <div class="row g-3 mb-4">
   <div class="col-sm-6 col-xl-3">
-    <div class="stat-card" style="border-radius: 20px; border: 1.5px solid #d4e7e4; background: #ffffff; padding: 1.5rem; box-shadow: 0 6px 20px rgba(15,118,110,0.05); position: relative; overflow: hidden;">
-      <div style="position: absolute; top: 0; inset-inline: 0; height: 3.5px; background: #f59e0b;"></div>
-      <div class="d-flex align-items-center justify-content-between mb-2">
-        <span class="stat-label" style="color: #527976; font-weight: 700;">طلبات قيد الانتظار</span>
-        <div class="stat-icon" style="background: #fffbeb; color: #d97706; border-radius: 14px; width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; font-size: 1.3rem;">
-          <i class="fa-solid fa-clock-rotate-left"></i>
+    <a href="<?= url('/admin/requests?status=pending') ?>" class="text-decoration-none">
+      <div class="stat-card" style="border-radius: 20px; border: 1.5px solid #d4e7e4; background: #ffffff; padding: 1.5rem; box-shadow: 0 6px 20px rgba(15,118,110,0.05); position: relative; overflow: hidden; transition: transform 0.2s;" onmouseover="this.style.transform='translateY(-3px)'" onmouseout="this.style.transform='translateY(0)'">
+        <div style="position: absolute; top: 0; inset-inline: 0; height: 3.5px; background: #f59e0b;"></div>
+        <div class="d-flex align-items-center justify-content-between mb-2">
+          <span class="stat-label" style="color: #527976; font-weight: 700;">طلبات قيد الانتظار</span>
+          <div class="stat-icon" style="background: #fffbeb; color: #d97706; border-radius: 14px; width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; font-size: 1.3rem;">
+            <i class="fa-solid fa-clock-rotate-left"></i>
+          </div>
+        </div>
+        <div class="stat-value" style="color: #d97706; font-size: 2.2rem; font-weight: 900; line-height: 1.2;">
+          <?= number_format($overview['pending_requests']) ?>
+        </div>
+        <div class="small text-muted d-flex justify-content-between align-items-center mt-1">
+          <span>تحتاج متابعة وتوجيه</span>
+          <i class="fa-solid fa-arrow-left text-warning"></i>
         </div>
       </div>
-      <div class="stat-value" style="color: #d97706; font-size: 2.2rem; font-weight: 900; line-height: 1.2;">
-        <?= number_format($overview['pending_requests']) ?>
-      </div>
-      <div class="small text-muted">تحتاج متابعة وإسناد سريع</div>
-    </div>
+    </a>
   </div>
 
   <div class="col-sm-6 col-xl-3">
@@ -157,7 +162,89 @@
   </div>
 </div>
 
-<!-- ============ CHARTS SECTION ============ -->
+<!-- ============ RECENT SERVICE REQUESTS TABLE ============ -->
+<div class="card border-0 shadow-sm mb-4" style="border-radius: 22px; border: 1px solid #d4e7e4 !important; background: #ffffff;">
+  <div class="card-header bg-white border-0 pt-4 px-4 pb-2 d-flex justify-content-between align-items-center">
+    <div class="d-flex align-items-center gap-2">
+      <div style="width: 42px; height: 42px; border-radius: 12px; background: #ecfdf5; color: #0f766e; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; border: 1.5px solid #a7f3d0;">
+        <i class="fa-solid fa-clipboard-list"></i>
+      </div>
+      <div>
+        <h5 class="fw-bold mb-0" style="color: #0b3734;">أحدث طلبات الخدمة</h5>
+        <small class="text-muted">متابعة فورية للطلبات الواردة من التطبيق والويب وتوجيهها للمهنيين</small>
+      </div>
+    </div>
+    <div class="d-flex align-items-center gap-2">
+      <a href="<?= url('/admin/requests?status=pending') ?>" class="btn btn-sm btn-outline-warning fw-bold px-3 py-1" style="border-radius: 10px;">
+        <i class="fa-solid fa-hourglass-start me-1"></i> بانتظار التوجيه
+      </a>
+      <a href="<?= url('/admin/requests') ?>" class="btn btn-sm btn-primary fw-bold px-3 py-1" style="border-radius: 10px; background: #0f766e; border-color: #0f766e;">
+        عرض كل الطلبات <i class="fa-solid fa-arrow-left ms-1"></i>
+      </a>
+    </div>
+  </div>
+  <div class="card-body px-0 pb-0">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead style="background: #f8fafc; border-bottom: 2px solid #e2e8f0;">
+          <tr>
+            <th class="ps-4 py-3" style="color: #0b3734; font-weight: 800; font-size: 0.85rem;">رقم الطلب</th>
+            <th class="py-3" style="color: #0b3734; font-weight: 800; font-size: 0.85rem;">الخدمة والعميل</th>
+            <th class="py-3" style="color: #0b3734; font-weight: 800; font-size: 0.85rem;">مقدم الخدمة</th>
+            <th class="py-3" style="color: #0b3734; font-weight: 800; font-size: 0.85rem;">السعر</th>
+            <th class="py-3" style="color: #0b3734; font-weight: 800; font-size: 0.85rem;">الحالة</th>
+            <th class="text-end pe-4 py-3" style="color: #0b3734; font-weight: 800; font-size: 0.85rem;">الإجراء</th>
+          </tr>
+        </thead>
+        <tbody>
+          <?php if (empty($recentRequests)): ?>
+            <tr>
+              <td colspan="6" class="text-center py-4 text-muted">لا توجد طلبات مسجلة حتى الآن</td>
+            </tr>
+          <?php else: ?>
+            <?php foreach ($recentRequests as $r): ?>
+              <tr>
+                <td class="ps-4">
+                  <div class="fw-bold font-monospace fs-6" style="color: #0b3734;">#<?= e($r['request_number']) ?></div>
+                  <div class="small text-muted font-monospace"><i class="fa-solid fa-calendar me-1"></i><?= formatDate($r['created_at']) ?></div>
+                </td>
+                <td>
+                  <div class="fw-bold text-dark"><?= e($r['service_name_ar'] ?? 'خدمة فنية') ?></div>
+                  <div class="small text-secondary"><i class="fa-solid fa-user me-1"></i><?= e($r['customer_name'] ?? 'عميل') ?></div>
+                </td>
+                <td>
+                  <?php if (!empty($r['provider_name'])): ?>
+                    <div class="fw-bold text-success"><i class="fa-solid fa-user-check me-1"></i><?= e($r['provider_name']) ?></div>
+                    <div class="small text-muted"><?= e($r['provider_profession'] ?? 'فني مهني') ?></div>
+                  <?php else: ?>
+                    <span class="badge bg-warning text-dark"><i class="fa-solid fa-hourglass-start me-1"></i>بانتظار التوجيه</span>
+                  <?php endif; ?>
+                </td>
+                <td>
+                  <?php if (!empty($r['final_price'])): ?>
+                    <span class="fw-bold text-success"><?= formatCurrency($r['final_price']) ?></span>
+                  <?php elseif (!empty($r['display_price'])): ?>
+                    <span class="fw-bold text-primary"><?= formatCurrency($r['display_price']) ?></span>
+                  <?php else: ?>
+                    <span class="text-muted small">غير محدد</span>
+                  <?php endif; ?>
+                </td>
+                <td>
+                  <?= statusBadge($r['status']) ?>
+                </td>
+                <td class="text-end pe-4">
+                  <a href="<?= url('/admin/requests/' . $r['id']) ?>" class="btn btn-sm btn-outline-primary px-3 py-1 fw-bold" style="border-radius: 8px;">
+                    <i class="fa-solid fa-route me-1"></i> متابعة وتوجيه
+                  </a>
+                </td>
+              </tr>
+            <?php endforeach; ?>
+          <?php endif; ?>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
 <div class="row g-4 mb-4">
   <div class="col-lg-7">
     <div class="card p-4 border-0 shadow-sm h-100" style="border-radius: 22px; border: 1px solid #d4e7e4 !important; background: #ffffff;">

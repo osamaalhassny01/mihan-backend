@@ -1114,12 +1114,17 @@ class ApiController extends Controller
         $openComplaints = (int)$db->query("SELECT COUNT(*) c FROM complaints WHERE status IN ('open', 'under_review')")->fetchColumn();
         $totalProviders = (int)$db->query("SELECT COUNT(*) c FROM users WHERE role = 'provider' AND is_active = 1")->fetchColumn();
 
-        $recentRequests = $db->query("SELECT sr.*, s.name_ar service_name, c.name customer_name, p.name provider_name 
+        $recentRequests = $db->query("SELECT sr.*, s.name_ar service_name, s.name_ar as service_name_ar,
+                                             c.name customer_name, c.phone customer_phone,
+                                             pu.name provider_name, pp.profession provider_profession,
+                                             COALESCE(sr.final_price, q.total_price, sr.budget) as display_price
                                       FROM service_requests sr
-                                      JOIN services s ON s.id = sr.service_id
-                                      JOIN users c ON c.id = sr.customer_id
-                                      LEFT JOIN users p ON p.id = sr.provider_id
-                                      ORDER BY sr.created_at DESC LIMIT 10")->fetchAll(PDO::FETCH_ASSOC);
+                                      LEFT JOIN services s ON s.id = sr.service_id
+                                      LEFT JOIN users c ON c.id = sr.customer_id
+                                      LEFT JOIN provider_profiles pp ON pp.id = sr.provider_id
+                                      LEFT JOIN users pu ON pu.id = pp.user_id
+                                      LEFT JOIN request_quotes q ON q.id = sr.quote_id
+                                      ORDER BY sr.created_at DESC LIMIT 15")->fetchAll(PDO::FETCH_ASSOC);
 
         $this->json([
             'stats' => [
@@ -1150,7 +1155,7 @@ class ApiController extends Controller
             $params['status'] = $status;
         }
 
-        $sql = "SELECT sr.*, s.name_ar as service_name, s.name_en as service_name_en,
+        $sql = "SELECT sr.*, s.name_ar as service_name, s.name_ar as service_name_ar, s.name_en as service_name_en,
                        c.name as customer_name, c.phone as customer_phone,
                        l.name_ar as location_name,
                        pp.id as provider_profile_id, pp.profession as provider_profession,
@@ -1158,8 +1163,8 @@ class ApiController extends Controller
                        COALESCE(sr.final_price, q.total_price, sr.budget) as display_price,
                        q.total_price as quoted_price
                 FROM service_requests sr
-                JOIN services s ON s.id = sr.service_id
-                JOIN users c ON c.id = sr.customer_id
+                LEFT JOIN services s ON s.id = sr.service_id
+                LEFT JOIN users c ON c.id = sr.customer_id
                 LEFT JOIN locations l ON l.id = sr.location_id
                 LEFT JOIN provider_profiles pp ON pp.id = sr.provider_id
                 LEFT JOIN users pu ON pu.id = pp.user_id
@@ -1631,18 +1636,33 @@ class ApiController extends Controller
         $providersCount = (int)$db->query("SELECT COUNT(*) c FROM users WHERE role = 'provider'")->fetchColumn();
         $employeesCount = (int)$db->query("SELECT COUNT(*) c FROM users WHERE role = 'employee'")->fetchColumn();
         $requestsCount = (int)$db->query("SELECT COUNT(*) c FROM service_requests")->fetchColumn();
+        $pendingRequestsCount = (int)$db->query("SELECT COUNT(*) c FROM service_requests WHERE status IN ('new', 'pending')")->fetchColumn();
         $totalRevenue = (float)$db->query("SELECT COALESCE(SUM(total_amount), 0) s FROM invoices WHERE status = 'paid'")->fetchColumn();
         $platformCommission = (float)$db->query("SELECT COALESCE(SUM(commission_amount), 0) s FROM platform_commissions")->fetchColumn();
 
+        $recentRequests = $db->query("SELECT sr.*, s.name_ar as service_name, s.name_ar as service_name_ar,
+                                             c.name as customer_name, c.phone as customer_phone,
+                                             pu.name as provider_name, pp.profession as provider_profession,
+                                             COALESCE(sr.final_price, q.total_price, sr.budget) as display_price
+                                      FROM service_requests sr
+                                      LEFT JOIN services s ON s.id = sr.service_id
+                                      LEFT JOIN users c ON c.id = sr.customer_id
+                                      LEFT JOIN provider_profiles pp ON pp.id = sr.provider_id
+                                      LEFT JOIN users pu ON pu.id = pp.user_id
+                                      LEFT JOIN request_quotes q ON q.id = sr.quote_id
+                                      ORDER BY sr.created_at DESC LIMIT 15")->fetchAll(PDO::FETCH_ASSOC);
+
         $this->json([
-            'users_count'         => $usersCount,
-            'customers_count'     => $customersCount,
-            'providers_count'     => $providersCount,
-            'employees_count'     => $employeesCount,
-            'requests_count'      => $requestsCount,
-            'total_revenue'       => $totalRevenue,
-            'platform_commission' => $platformCommission,
-            'web_portal_url'      => defined('APP_URL') ? APP_URL . '/admin/dashboard' : '/admin/dashboard',
+            'users_count'            => $usersCount,
+            'customers_count'        => $customersCount,
+            'providers_count'        => $providersCount,
+            'employees_count'        => $employeesCount,
+            'requests_count'         => $requestsCount,
+            'pending_requests_count' => $pendingRequestsCount,
+            'total_revenue'          => $totalRevenue,
+            'platform_commission'    => $platformCommission,
+            'recent_requests'        => $recentRequests,
+            'web_portal_url'         => defined('APP_URL') ? APP_URL . '/admin/dashboard' : '/admin/dashboard',
         ]);
     }
 

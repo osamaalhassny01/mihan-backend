@@ -29,7 +29,36 @@ class EmployeeController extends Controller
         $this->view('employee/dashboard',['title'=>'لوحة موظف المنصة','stats'=>$stats,'recentRequests'=>(new ServiceRequest())->query("SELECT sr.*, cu.name customer_name FROM service_requests sr JOIN users cu ON cu.id=sr.customer_id ORDER BY sr.created_at DESC LIMIT 10"),'overview'=>$analytics->overview()],'dashboard');
     }
 
-    public function requests(){Auth::requirePermission('manage_requests');$status=$this->input('status');$m=new ServiceRequest();$requests=$status?$m->where(['status'=>$status],'created_at DESC'):$m->query("SELECT sr.*,cu.name customer_name,pu.name provider_name,s.name_ar service_name_ar FROM service_requests sr JOIN users cu ON cu.id=sr.customer_id LEFT JOIN provider_profiles pp ON pp.id=sr.provider_id LEFT JOIN users pu ON pu.id=pp.user_id JOIN services s ON s.id=sr.service_id ORDER BY sr.created_at DESC");$this->view('employee/requests',['title'=>'متابعة الطلبات','requests'=>$requests,'status'=>$status],'dashboard');}
+    public function requests()
+    {
+        Auth::requirePermission('manage_requests');
+        $status = $this->input('status');
+        $whereSql = "";
+        $params = [];
+        if ($status && in_array($status, ['new', 'pending', 'accepted', 'in_progress', 'awaiting_confirmation', 'completed', 'cancelled', 'rejected'], true)) {
+            $whereSql = "WHERE sr.status = :status";
+            $params['status'] = $status;
+        }
+
+        $db = Database::getInstance();
+        $sql = "SELECT sr.*, cu.name as customer_name, cu.phone as customer_phone,
+                       pu.name as provider_name, pp.profession as provider_profession,
+                       s.name_ar as service_name_ar,
+                       COALESCE(sr.final_price, q.total_price, sr.budget) as display_price
+                FROM service_requests sr
+                LEFT JOIN users cu ON cu.id = sr.customer_id
+                LEFT JOIN provider_profiles pp ON pp.id = sr.provider_id
+                LEFT JOIN users pu ON pu.id = pp.user_id
+                LEFT JOIN services s ON s.id = sr.service_id
+                LEFT JOIN request_quotes q ON q.id = sr.quote_id
+                {$whereSql}
+                ORDER BY sr.created_at DESC";
+        $stmt = $db->prepare($sql);
+        $stmt->execute($params);
+        $requests = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $this->view('employee/requests', ['title' => 'متابعة الطلبات', 'requests' => $requests, 'status' => $status], 'dashboard');
+    }
 
     public function requestDetails($id){
         Auth::requirePermission('manage_requests');

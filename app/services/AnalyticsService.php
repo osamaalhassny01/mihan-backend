@@ -26,7 +26,7 @@ class AnalyticsService
             'customers' => (int)$this->scalar("SELECT COUNT(*) FROM users WHERE role='customer'"),
             'providers' => (int)$this->scalar("SELECT COUNT(*) FROM users WHERE role='provider'"),
             'verified_providers' => (int)$this->scalar("SELECT COUNT(*) FROM provider_profiles WHERE is_verified=1"),
-            'pending_requests' => (int)$this->scalar("SELECT COUNT(*) FROM service_requests WHERE status='pending'"),
+            'pending_requests' => (int)$this->scalar("SELECT COUNT(*) FROM service_requests WHERE status IN ('new', 'pending')"),
             'completed_requests' => (int)$this->scalar("SELECT COUNT(*) FROM service_requests WHERE status='completed'"),
             'cancelled_requests' => (int)$this->scalar("SELECT COUNT(*) FROM service_requests WHERE status='cancelled'"),
             'open_complaints' => (int)$this->scalar("SELECT COUNT(*) FROM complaints WHERE status IN ('open','in_review')"),

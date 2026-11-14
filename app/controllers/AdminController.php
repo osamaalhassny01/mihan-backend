@@ -33,7 +33,19 @@ class AdminController extends Controller
         $topProviders = $analytics->topProviders();
         $recentActivity = (new ActivityLog())->recent(10);
 
-        $this->view('admin/dashboard', compact('overview', 'requestsByMonth', 'servicesByCategory', 'topProviders', 'recentActivity')
+        $db = Database::getInstance();
+        $recentRequests = $db->query("SELECT sr.*, s.name_ar as service_name_ar, c.name as customer_name, c.phone as customer_phone,
+                                             pu.name as provider_name, pp.profession as provider_profession,
+                                             COALESCE(sr.final_price, q.total_price, sr.budget) as display_price
+                                      FROM service_requests sr
+                                      LEFT JOIN services s ON s.id = sr.service_id
+                                      LEFT JOIN users c ON c.id = sr.customer_id
+                                      LEFT JOIN provider_profiles pp ON pp.id = sr.provider_id
+                                      LEFT JOIN users pu ON pu.id = pp.user_id
+                                      LEFT JOIN request_quotes q ON q.id = sr.quote_id
+                                      ORDER BY sr.created_at DESC LIMIT 8")->fetchAll(PDO::FETCH_ASSOC);
+
+        $this->view('admin/dashboard', compact('overview', 'requestsByMonth', 'servicesByCategory', 'topProviders', 'recentActivity', 'recentRequests')
             + ['title' => __('dashboard')], 'dashboard');
     }
 
@@ -558,8 +570,8 @@ class AdminController extends Controller
                        pu.name as provider_name, pp.profession as provider_profession,
                        COALESCE(sr.final_price, q.total_price, sr.budget) as display_price
                 FROM service_requests sr
-                JOIN services s ON s.id = sr.service_id
-                JOIN users c ON c.id = sr.customer_id
+                LEFT JOIN services s ON s.id = sr.service_id
+                LEFT JOIN users c ON c.id = sr.customer_id
                 LEFT JOIN provider_profiles pp ON pp.id = sr.provider_id
                 LEFT JOIN users pu ON pu.id = pp.user_id
                 LEFT JOIN request_quotes q ON q.id = sr.quote_id
