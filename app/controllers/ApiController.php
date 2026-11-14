@@ -441,8 +441,11 @@ class ApiController extends Controller
     public function services(): void
     {
         $catId = isset($_GET['category_id']) ? (int)$_GET['category_id'] : null;
+        $keyword = trim((string)($_GET['keyword'] ?? ''));
         $serviceModel = new Service();
-        if ($catId) {
+        if ($keyword !== '') {
+            $services = $serviceModel->search($keyword);
+        } elseif ($catId) {
             $services = $serviceModel->where(['category_id' => $catId, 'is_active' => 1]);
         } else {
             $services = $serviceModel->allActive();
