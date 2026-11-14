@@ -81,6 +81,7 @@ $router->get('/provider/notifications', 'ProviderController@notifications');
 $router->post('/provider/requests/{id}/quote', 'ProviderController@submitQuote');
 
 // ---------------- Admin ----------------
+$router->get('/admin', 'AdminController@dashboard');
 $router->get('/admin/dashboard', 'AdminController@dashboard');
 $router->get('/admin/ai', 'AdminAIController@index');
 $router->post('/admin/ai/save', 'AdminAIController@save');

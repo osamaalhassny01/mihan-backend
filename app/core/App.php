@@ -102,9 +102,12 @@ class App
         if ($error && in_array($error['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR], true)) {
             self::log("Fatal shutdown error: {$error['message']} in {$error['file']}:{$error['line']}");
             if (!headers_sent()) http_response_code(500);
-            if (!(defined('APP_ENV') && APP_ENV === 'development')) {
-                $file = __DIR__ . '/../views/errors/500.php';
-                if (file_exists($file)) require $file;
+            if (isset($_GET['debug']) || (defined('APP_ENV') && APP_ENV === 'development')) {
+                echo '<div style="direction:ltr;text-align:left;font-family:monospace;background:#1e1e1e;color:#f88;padding:24px;white-space:pre-wrap">';
+                echo '<h2 style="color:#f66">Fatal Shutdown Error</h2>';
+                echo htmlspecialchars($error['message']) . "\n\n" . htmlspecialchars($error['file']) . ':' . $error['line'];
+                echo '</div>';
+                return;
             }
         }
     }

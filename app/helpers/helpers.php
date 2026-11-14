@@ -169,6 +169,17 @@ function money($amount): string
     return number_format((float)$amount, 2) . ' ' . currency();
 }
 
+function formatCurrency($amount): string
+{
+    if ($amount === null || $amount === '') return 'غير محدد';
+    return number_format((float)$amount, 0) . ' ' . currency();
+}
+
+function csrfField(): string
+{
+    return csrf_field();
+}
+
 function renderBackButton(?string $url = null, ?string $text = null, ?string $icon = null, ?string $class = null): void
 {
     $backUrl = $url;
