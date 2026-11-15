@@ -45,6 +45,11 @@ abstract class Model
         return $rows[0] ?? null;
     }
 
+    public function findWhere(array $conditions)
+    {
+        return $this->first($conditions);
+    }
+
     public function count(array $conditions = []): int
     {
         if (empty($conditions)) {

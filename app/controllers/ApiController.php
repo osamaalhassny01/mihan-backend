@@ -1772,11 +1772,11 @@ class ApiController extends Controller
             $appId = (int)$appModel->insert($applicationData);
         }
 
-        // Update user role to provider if customer, but keep inactive until admin approves
+        // Update user role to provider if customer, and keep account active so applicant can track status
         $userModel = new User();
         $userModel->update((int)$user['id'], [
-            'role' => 'provider',
-            'is_active' => 0
+            'role'      => 'provider',
+            'is_active' => 1
         ]);
 
         // Ensure provider_profiles record exists and link the chosen service & location
@@ -1884,12 +1884,11 @@ class ApiController extends Controller
                 @mkdir($uploadDir, 0777, true);
             }
 
-            $fileName = "cert_{$userId}_" . time() . "_{$ext}." . $ext;
+            $fileName = "cert_{$userId}_" . time() . "_" . bin2hex(random_bytes(4)) . "." . $ext;
             $targetPath = $uploadDir . '/' . $fileName;
 
             if (file_put_contents($targetPath, $decoded)) {
-                $appUrl = defined('APP_URL') ? rtrim(APP_URL, '/') : '';
-                return $appUrl . '/uploads/certificates/' . $fileName;
+                return url('/public/uploads/certificates/' . $fileName);
             }
         } catch (Throwable $e) {
             error_log('Failed saving certificate image: ' . $e->getMessage());

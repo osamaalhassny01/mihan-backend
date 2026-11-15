@@ -41,7 +41,7 @@ class ProviderApplication extends Model
     public function findByUserId(int $userId): ?array
     {
         self::ensureTable();
-        return $this->findWhere(['user_id' => $userId]);
+        return $this->first(['user_id' => $userId]);
     }
 
     public function allWithUserDetails(?string $status = null): array
