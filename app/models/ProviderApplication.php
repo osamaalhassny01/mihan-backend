@@ -41,7 +41,8 @@ class ProviderApplication extends Model
     public function findByUserId(int $userId): ?array
     {
         self::ensureTable();
-        return $this->first(['user_id' => $userId]);
+        $rows = $this->query("SELECT * FROM provider_applications WHERE user_id = :uid ORDER BY id DESC LIMIT 1", ['uid' => $userId]);
+        return $rows[0] ?? null;
     }
 
     public function allWithUserDetails(?string $status = null): array

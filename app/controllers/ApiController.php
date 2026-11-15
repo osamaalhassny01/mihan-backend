@@ -362,7 +362,31 @@ class ApiController extends Controller
         $user = $this->requireUser();
         $providerProfile = null;
         if ($user['role'] === 'provider') {
-            $providerProfile = (new ProviderProfile())->findByUser((int)$user['id']);
+            $profModel = new ProviderProfile();
+            $providerProfile = $profModel->findByUser((int)$user['id']);
+            if (!$providerProfile) {
+                $profId = (int)$profModel->insert([
+                    'user_id'          => (int)$user['id'],
+                    'profession'       => 'فني خدمات معتمد',
+                    'experience_years' => 0,
+                    'is_verified'      => 0,
+                    'is_available'     => 1,
+                ]);
+                $providerProfile = $profModel->find($profId);
+            }
+            if ($providerProfile) {
+                ProviderApplication::ensureTable();
+                $app = (new ProviderApplication())->findByUserId((int)$user['id']);
+                if ($app) {
+                    if ((empty($providerProfile['experience_years']) || (int)$providerProfile['experience_years'] === 0) && !empty($app['years_exp'])) {
+                        $providerProfile['experience_years'] = (int)$app['years_exp'];
+                    }
+                    if (!empty($app['profession'])) {
+                        $providerProfile['profession'] = $app['profession'];
+                    }
+                    $providerProfile['application_status'] = $app['status'];
+                }
+            }
         }
 
         $this->json([
@@ -1787,16 +1811,17 @@ class ApiController extends Controller
                 'user_id'          => (int)$user['id'],
                 'profession'       => $profession,
                 'experience_years' => $yearsExp,
+                'bio'              => $bio ?: null,
                 'is_verified'      => 0,
-                'is_available'     => 0,
+                'is_available'     => 1,
             ]);
         } else {
             $profId = (int)$prof['id'];
             $profModel->update($profId, [
                 'profession'       => $profession,
                 'experience_years' => $yearsExp,
+                'bio'              => $bio ?: ($prof['bio'] ?? null),
                 'is_verified'      => 0,
-                'is_available'     => 0,
             ]);
         }
 
@@ -1848,12 +1873,34 @@ class ApiController extends Controller
     public function providerApplicationStatus(): void
     {
         $user = $this->requireUser();
+        ProviderApplication::ensureTable();
         $appModel = new ProviderApplication();
         $app = $appModel->findByUserId((int)$user['id']);
+
+        $profModel = new ProviderProfile();
+        $prof = $profModel->findByUser((int)$user['id']);
+
+        $serviceId = null;
+        $locationId = null;
+
+        if ($prof) {
+            $db = Database::getInstance();
+            $ps = $db->query("SELECT service_id FROM provider_services WHERE provider_id = {$prof['id']} LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+            if ($ps) {
+                $serviceId = (int)$ps['service_id'];
+            }
+            $pl = $db->query("SELECT location_id FROM provider_locations WHERE provider_id = {$prof['id']} LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+            if ($pl) {
+                $locationId = (int)$pl['location_id'];
+            }
+        }
 
         $this->json([
             'has_application' => $app !== null,
             'application'     => $app,
+            'profile'         => $prof,
+            'service_id'      => $serviceId,
+            'location_id'     => $locationId,
             'is_active'       => (int)($user['is_active'] ?? 0) === 1
         ]);
     }
