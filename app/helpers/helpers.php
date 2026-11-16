@@ -108,7 +108,21 @@ function flash(string $key): ?string
 function formatDate(?string $date): string
 {
     if (!$date) return '-';
-    return date('Y-m-d H:i', strtotime($date));
+    $ts = strtotime($date);
+    if ($ts === false) return e($date);
+    $timePart = date('h:i', $ts);
+    $ampm = date('A', $ts) === 'AM' ? 'ص' : 'م';
+    return date('Y-m-d', $ts) . " {$timePart} {$ampm}";
+}
+
+function formatTimeArabic(?string $time): string
+{
+    if (!$time) return '-';
+    $ts = strtotime($time);
+    if ($ts === false) return e($time);
+    $timePart = date('h:i', $ts);
+    $ampm = date('A', $ts) === 'AM' ? 'ص' : 'م';
+    return "{$timePart} {$ampm}";
 }
 
 function statusBadge(string $status): string

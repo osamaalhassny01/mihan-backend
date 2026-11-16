@@ -1,4 +1,6 @@
 <?php
+date_default_timezone_set('Asia/Aden');
+
 function loadEnv($path) {
     if (!file_exists($path)) return;
     foreach (file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
