@@ -19,6 +19,24 @@
   </div>
 </div>
 
+<!-- AI Decision Support Quick Access Banner -->
+<div class="card border-0 shadow-sm rounded-4 p-3 mb-4" style="background: linear-gradient(135deg, #042f2e 0%, #0f766e 100%); color: white;">
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
+    <div class="d-flex align-items-center gap-3">
+      <div style="width: 48px; height: 48px; border-radius: 14px; background: rgba(255,255,255,0.2); display: flex; align-items: center; justify-content: center; font-size: 1.4rem;">
+        <i class="fa-solid fa-brain"></i>
+      </div>
+      <div>
+        <h5 class="fw-bold mb-1">الذكاء الاصطناعي ودعم اتخاذ القرار الإداري</h5>
+        <p class="mb-0 small text-white-50">اكتشاف نقص مقدمي الخدمات في المناطق، تحليل الأداء ومصفوفة المهنيين، وتتبع الشكاوى والخدمات الأكثر طلباً.</p>
+      </div>
+    </div>
+    <a href="<?= url('/admin/decision-support') ?>" class="btn btn-light fw-bold px-4 py-2" style="color: #0f766e; border-radius: 12px;">
+      <i class="fa-solid fa-wand-magic-sparkles me-1"></i> فتح لوحة دعم القرار
+    </a>
+  </div>
+</div>
+
 <!-- ============ ROW 1: USER & MEMBERSHIP KPIS ============ -->
 <div class="row g-3 mb-4">
   <div class="col-sm-6 col-xl-3">

@@ -16,6 +16,7 @@ require_once __DIR__ . '/../models/ProviderApplication.php';
 require_once __DIR__ . '/../services/FinanceService.php';
 require_once __DIR__ . '/../services/FcmService.php';
 require_once __DIR__ . '/../services/ProviderVettingService.php';
+require_once __DIR__ . '/../services/AdminDecisionSupportService.php';
 
 class ApiController extends Controller
 {
@@ -1729,6 +1730,32 @@ class ApiController extends Controller
         $db = Database::getInstance();
         $users = $db->query("SELECT id, name, email, phone, role, is_active, created_at FROM users ORDER BY id DESC LIMIT 50")->fetchAll(PDO::FETCH_ASSOC);
         $this->json($users);
+    }
+
+    /**
+     * AI-Powered Administrative Decision Support Full Payload
+     * Aggregates KPIs, geographic deficits, provider rankings, service demand, and AI recommendations.
+     */
+    public function adminDecisionSupport(): void
+    {
+        $this->requireUser('admin');
+        $service = new AdminDecisionSupportService();
+        $data = $service->getFullDashboardData();
+        $this->json($data, 200, 'تم استخراج مؤشرات وتوصيات دعم القرار الإداري بنجاح');
+    }
+
+    /**
+     * Ask the AI Decision Advisor about platform data
+     */
+    public function adminDecisionSupportAsk(): void
+    {
+        $this->requireUser('admin');
+        $payload = $this->getPayload();
+        $question = trim((string)($payload['question'] ?? ''));
+        
+        $service = new AdminDecisionSupportService();
+        $result = $service->askAdvisor($question);
+        $this->json($result, 200, 'تمت معالجة الاستفسار الإداري');
     }
 
     /**

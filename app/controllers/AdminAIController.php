@@ -9,6 +9,7 @@ require_once __DIR__ . '/../services/AI/providers/GroqProvider.php';
 require_once __DIR__ . '/../services/AI/providers/GeminiProvider.php';
 require_once __DIR__ . '/../services/AI/providers/OpenAICompatibleProvider.php';
 require_once __DIR__ . '/../services/AnalyticsService.php';
+require_once __DIR__ . '/../services/AdminDecisionSupportService.php';
 require_once __DIR__ . '/../models/ProviderEvaluation.php';
 require_once __DIR__ . '/../models/ProviderProfile.php';
 class AdminAIController extends Controller
@@ -235,8 +236,29 @@ class AdminAIController extends Controller
 
     public function decisionSupport()
     {
-        $question=$this->input('question','');$answer=null;$meta=null;
-        if($_SERVER['REQUEST_METHOD']==='POST'){$this->verifyCsrfOrFail();$analytics=new AnalyticsService();$data=$analytics->decisionSummary([])+['insights'=>$analytics->decisionInsights([]),'top_services'=>$analytics->mostRequestedServices([],5),'top_areas'=>$analytics->mostActiveAreas(5,[])];$system='أنت مساعد دعم قرار لإدارة منصة مهنية. حلل بيانات JSON المعطاة فقط، ولا تخترع أرقامًا. اذكر ملاحظات عملية ومخاطر واقتراحات قابلة للتنفيذ.';$res=AIServiceFactory::chat([['role'=>'system','content'=>$system],['role'=>'user','content'=>($question?:'حلل أداء المنصة واقترح أولويات الإدارة.')."\nDATA:\n".json_encode($data,JSON_UNESCAPED_UNICODE)]],['temperature'=>0.2,'max_tokens'=>900]);$answer=$res['text'];$meta=$res;}
-        $this->view('admin/ai/decision_support',['title'=>'دعم القرار بالذكاء الاصطناعي','answer'=>$answer,'meta'=>$meta],'dashboard');
+        $service = new AdminDecisionSupportService();
+        $dashboardData = $service->getFullDashboardData();
+        
+        $question = trim((string)$this->input('question', ''));
+        $answer = null;
+        $meta = null;
+
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            $this->verifyCsrfOrFail();
+            $advisorRes = $service->askAdvisor($question);
+            $answer = $advisorRes['answer'] ?? null;
+            $meta = [
+                'provider' => $advisorRes['provider'] ?? 'local',
+                'fallback' => !empty($advisorRes['fallback_used']),
+            ];
+        }
+
+        $this->view('admin/ai/decision_support', [
+            'title' => 'الذكاء الاصطناعي ودعم اتخاذ القرار الإداري',
+            'data' => $dashboardData,
+            'question' => $question,
+            'answer' => $answer,
+            'meta' => $meta,
+        ], 'dashboard');
     }
 }

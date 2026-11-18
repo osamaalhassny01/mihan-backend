@@ -89,6 +89,8 @@ $router->post('/admin/ai/test', 'AdminAIController@test');
 $router->post('/admin/ai/test-all', 'AdminAIController@testAll');
 $router->get('/admin/ai/logs', 'AdminAIController@logs');
 $router->get('/admin/ai/decision-support', 'AdminAIController@decisionSupport');
+$router->get('/admin/decision-support', 'AdminAIController@decisionSupport');
+$router->post('/admin/decision-support', 'AdminAIController@decisionSupport');
 $router->get('/admin/ai/provider/{id}', 'AdminAIController@providerAnalysis');
 $router->post('/admin/ai/decision-support', 'AdminAIController@decisionSupport');
 
@@ -233,6 +235,8 @@ $router->get('/api/employee/complaints', 'ApiController@employeeComplaints');
 
 // Admin API endpoints
 $router->get('/api/admin/dashboard', 'ApiController@adminDashboard');
+$router->get('/api/admin/decision-support', 'ApiController@adminDecisionSupport');
+$router->post('/api/admin/decision-support/ask', 'ApiController@adminDecisionSupportAsk');
 $router->get('/api/admin/requests', 'ApiController@employeeRequests');
 $router->get('/api/admin/requests/{id}', 'ApiController@requestTrackingDetails');
 $router->post('/api/admin/requests/{id}/forward', 'ApiController@forwardRequest');
