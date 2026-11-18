@@ -334,7 +334,6 @@ class AdminDecisionSupportService
                 s.id AS service_id,
                 s.name_ar,
                 s.name_en,
-                s.base_price,
                 c.id AS category_id,
                 c.name_ar AS category_name,
                 COUNT(DISTINCT sr.id) AS requests_count,
@@ -348,7 +347,7 @@ class AdminDecisionSupportService
             LEFT JOIN provider_services pl ON pl.service_id = s.id
             LEFT JOIN invoices i ON i.request_id = sr.id AND i.payment_status = 'paid'
             WHERE s.is_active = 1
-            GROUP BY s.id, s.name_ar, s.name_en, s.base_price, c.id, c.name_ar
+            GROUP BY s.id, s.name_ar, s.name_en, c.id, c.name_ar
             ORDER BY requests_count DESC, s.name_ar ASC
         ";
 
@@ -370,7 +369,7 @@ class AdminDecisionSupportService
                 'name_ar' => $r['name_ar'],
                 'name_en' => $r['name_en'] ?? $r['name_ar'],
                 'category_name' => $r['category_name'],
-                'base_price' => (float)$r['base_price'],
+                'base_price' => 0.0,
                 'requests_count' => $req,
                 'active_providers_count' => $providers,
                 'completed_count' => (int)$r['completed_count'],
