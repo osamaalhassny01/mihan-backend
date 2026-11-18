@@ -108,17 +108,19 @@ class AdminDecisionSupportService
                 l.id AS location_id,
                 l.name_ar,
                 l.name_en,
-                l.city,
+                l.level,
+                COALESCE(parent.name_ar, l.name_ar) AS city,
                 COUNT(DISTINCT sr.id) AS requests_count,
                 COUNT(DISTINCT pp.id) AS total_providers,
                 COUNT(DISTINCT CASE WHEN pp.is_available = 1 THEN pp.id ELSE NULL END) AS available_providers,
                 COUNT(DISTINCT CASE WHEN pp.is_verified = 1 THEN pp.id ELSE NULL END) AS verified_providers
             FROM locations l
+            LEFT JOIN locations parent ON parent.id = l.parent_id
             LEFT JOIN service_requests sr ON sr.location_id = l.id
             LEFT JOIN provider_locations pl ON pl.location_id = l.id
             LEFT JOIN provider_profiles pp ON pp.id = pl.provider_id
             WHERE l.is_active = 1
-            GROUP BY l.id, l.name_ar, l.name_en, l.city
+            GROUP BY l.id, l.name_ar, l.name_en, l.level, parent.name_ar
             ORDER BY requests_count DESC, available_providers ASC
         ";
 
@@ -160,7 +162,7 @@ class AdminDecisionSupportService
                 'location_id' => (int)$r['location_id'],
                 'name_ar' => $r['name_ar'],
                 'name_en' => $r['name_en'] ?? $r['name_ar'],
-                'city' => $r['city'] ?? '',
+                'city' => $r['city'] ?? $r['name_ar'],
                 'requests_count' => $req,
                 'total_providers' => $totalProv,
                 'available_providers' => $avail,
@@ -199,23 +201,23 @@ class AdminDecisionSupportService
                 u.phone AS provider_phone,
                 u.email AS provider_email,
                 pp.profession,
-                pp.years_exp,
+                pp.experience_years,
                 pp.avg_rating,
-                pp.total_reviews,
+                pp.rating_count,
                 pp.completed_jobs,
                 pp.is_verified,
                 pp.is_available,
-                COUNT(sr.id) AS total_assigned_requests,
+                COUNT(DISTINCT sr.id) AS total_assigned_requests,
                 SUM(CASE WHEN sr.status = 'completed' THEN 1 ELSE 0 END) AS completed_requests,
                 SUM(CASE WHEN sr.status = 'cancelled' THEN 1 ELSE 0 END) AS cancelled_requests,
                 SUM(CASE WHEN sr.status = 'rejected' THEN 1 ELSE 0 END) AS rejected_requests,
-                COUNT(c.id) AS complaints_count
+                COUNT(DISTINCT c.id) AS complaints_count
             FROM provider_profiles pp
             JOIN users u ON u.id = pp.user_id
             LEFT JOIN service_requests sr ON sr.provider_id = pp.id
-            LEFT JOIN complaints c ON c.provider_id = pp.id
-            GROUP BY pp.id, pp.user_id, u.name, u.phone, u.email, pp.profession, pp.years_exp,
-                     pp.avg_rating, pp.total_reviews, pp.completed_jobs, pp.is_verified, pp.is_available
+            LEFT JOIN complaints c ON c.against_user_id = pp.user_id
+            GROUP BY pp.id, pp.user_id, u.name, u.phone, u.email, pp.profession, pp.experience_years,
+                     pp.avg_rating, pp.rating_count, pp.completed_jobs, pp.is_verified, pp.is_available
             ORDER BY pp.completed_jobs DESC, pp.avg_rating DESC
         ";
 
@@ -250,7 +252,7 @@ class AdminDecisionSupportService
             $badgeColor = 'primary';
             $adminAction = 'الحفاظ على مستوى الخدمة ومتابعة دورية.';
 
-            if ($compositeScore >= 80 && ($completed >= 1 || $rating >= 4.5)) {
+            if ($compositeScore >= 75 && ($completed >= 1 || $rating >= 4.0)) {
                 $tier = 'top_performer';
                 $tierLabel = 'أداء مرتفع (متميز)';
                 $badgeColor = 'success';
@@ -266,7 +268,7 @@ class AdminDecisionSupportService
                 if ($rating > 0 && $rating < 3.0) $reasons[] = "تقييم منخفض ({$rating}/5)";
                 if (!$isVerified) $reasons[] = 'غير موثق إدارياً';
                 
-                $adminAction = 'يوصى بالتواصل مع المهني والتحقق من: ' . implode('، ', $reasons);
+                $adminAction = 'يوصى بالتواصل مع المهني والتحقق من: ' . (empty($reasons) ? 'المؤشرات التشغيلية' : implode('، ', $reasons));
             }
 
             $providerItem = [
@@ -276,9 +278,9 @@ class AdminDecisionSupportService
                 'phone' => $r['provider_phone'] ?? '',
                 'email' => $r['provider_email'] ?? '',
                 'profession' => $r['profession'] ?? 'فني خدمات',
-                'years_exp' => (int)$r['years_exp'],
+                'years_exp' => (int)$r['experience_years'],
                 'avg_rating' => $rating,
-                'total_reviews' => (int)$r['total_reviews'],
+                'total_reviews' => (int)$r['rating_count'],
                 'completed_jobs' => (int)$r['completed_jobs'],
                 'total_assigned' => $totalAssigned,
                 'completion_rate' => $completionRate,
@@ -440,7 +442,7 @@ class AdminDecisionSupportService
             LIMIT 5
         ")->fetchAll(PDO::FETCH_ASSOC);
 
-        // Complaints by Provider (Repeated offenders)
+        // Complaints by Provider (against_user_id)
         $byProvider = $this->db->query("
             SELECT 
                 pp.id AS provider_id,
@@ -449,8 +451,8 @@ class AdminDecisionSupportService
                 COUNT(cmp.id) AS complaints_count,
                 ROUND(AVG(pp.avg_rating), 1) AS rating
             FROM complaints cmp
-            JOIN provider_profiles pp ON pp.id = cmp.provider_id
-            JOIN users u ON u.id = pp.user_id
+            JOIN users u ON u.id = cmp.against_user_id
+            JOIN provider_profiles pp ON pp.user_id = u.id
             GROUP BY pp.id, u.name, pp.profession
             HAVING complaints_count > 0
             ORDER BY complaints_count DESC
@@ -476,9 +478,8 @@ class AdminDecisionSupportService
                 pu.name AS provider_name,
                 s.name_ar AS service_name
             FROM complaints cmp
-            LEFT JOIN users u ON u.id = cmp.user_id
-            LEFT JOIN provider_profiles pp ON pp.id = cmp.provider_id
-            LEFT JOIN users pu ON pu.id = pp.user_id
+            LEFT JOIN users u ON u.id = cmp.created_by
+            LEFT JOIN users pu ON pu.id = cmp.against_user_id
             LEFT JOIN service_requests sr ON sr.id = cmp.request_id
             LEFT JOIN services s ON s.id = sr.service_id
             ORDER BY cmp.created_at DESC
