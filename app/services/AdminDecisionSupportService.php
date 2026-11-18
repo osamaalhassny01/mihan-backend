@@ -797,21 +797,6 @@ class AdminDecisionSupportService
 
         return implode("\n", $lines);
     }
-        $lines[] = "- **الشكاوى المفتوحة:** {$kpis['open_complaints']} شكوى (نسبة الحل: {$kpis['complaint_resolution_rate']}%)";
-        $lines[] = "- **الإيرادات الإجمالية:** " . number_format($kpis['total_revenue']) . " ريال (العمولات: " . number_format($kpis['platform_commission']) . " ريال)\n";
-
-        $lines[] = "### ⚠️ أبرز الملاحظات التشغيلية:";
-        foreach (array_slice($data['ai_recommendations'], 0, 3) as $rec) {
-            $lines[] = "- **{$rec['title']}:** {$rec['explanation']}";
-        }
-
-        $lines[] = "\n### 💡 التوصيات الإدارية المقترحة:";
-        foreach (array_slice($data['ai_recommendations'], 0, 3) as $rec) {
-            $lines[] = "1. {$rec['recommendation']}";
-        }
-
-        return implode("\n", $lines);
-    }
 
     private function scalar(string $sql, array $params = [], $default = 0)
     {
