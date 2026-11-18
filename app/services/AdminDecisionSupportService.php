@@ -652,10 +652,25 @@ class AdminDecisionSupportService
                 'max_tokens' => 1200,
             ]);
 
+            // If the provider fell back to basic local rule-based service (which is customer-oriented),
+            // use our domain-specific executive decision engine for rich administrative insights.
+            $rawText = $aiResponse['text'] ?? '';
+            $isGenericLocal = ($aiResponse['provider'] ?? '') === 'local' || str_contains($rawText, 'سباكة') || str_contains($rawText, 'المساعد المحلي');
+
+            if ($isGenericLocal) {
+                return [
+                    'success' => true,
+                    'question' => $question,
+                    'answer' => $this->generateAlgorithmicAdvisorSummary($analyticsData, $question),
+                    'provider' => 'local_decision_intelligence',
+                    'fallback_used' => true,
+                ];
+            }
+
             return [
                 'success' => true,
                 'question' => $question,
-                'answer' => $aiResponse['text'] ?? '',
+                'answer' => $rawText,
                 'provider' => $aiResponse['provider'] ?? 'local',
                 'fallback_used' => !empty($aiResponse['fallback']),
             ];
@@ -664,20 +679,124 @@ class AdminDecisionSupportService
             return [
                 'success' => true,
                 'question' => $question,
-                'answer' => $this->generateAlgorithmicAdvisorSummary($analyticsData),
-                'provider' => 'local_algorithmic',
+                'answer' => $this->generateAlgorithmicAdvisorSummary($analyticsData, $question),
+                'provider' => 'local_decision_intelligence',
                 'fallback_used' => true,
             ];
         }
     }
 
-    private function generateAlgorithmicAdvisorSummary(array $data): string
+    private function generateAlgorithmicAdvisorSummary(array $data, string $question = ''): string
     {
         $kpis = $data['kpis'];
+        $q = mb_strtolower($question);
+
+        // 1. Specific Query: Geographic Deficit & Supply-Demand
+        if (str_contains($q, 'منطق') || str_contains($q, 'عجز') || str_contains($q, 'تغطي') || str_contains($q, 'توافر')) {
+            $lines = [];
+            $lines[] = "### 📍 تحليل العجز الجغرافي وتوازن العرض والطلب في المناطق:";
+            $criticalAreas = array_filter($data['supply_demand_deficit'], fn($a) => $a['status'] === 'critical' || $a['status'] === 'high_deficit');
+            
+            if (!empty($criticalAreas)) {
+                $lines[] = "رصد النظام فجوات حادة في التغطية بالمناطق التالية:\n";
+                foreach ($criticalAreas as $area) {
+                    $lines[] = "- **{$area['name_ar']} ({$area['city']}):** سجلت ({$area['requests_count']} طلب) مقابل ({$area['available_providers']} مهني متاح حالياً) — نسبة الطلب للمهنيين: {$area['demand_to_supply_ratio']}:1. {$area['recommendation']}";
+                }
+                $lines[] = "\n💡 **القرار الإداري المقترح:** إطلاق حملة استقطاب موجهة للمهنيين في هذه المديريات وفتح نافذة تسجيل استثنائية مع إسناد فوري لطلبات التوثيق الجديدة بهذه النطاقات.";
+            } else {
+                $lines[] = "كافة المناطق المسجلة تشهد توازناً مستقراً بين أعداد الطلبات ومزودي الخدمة المتاحين حالياً.";
+            }
+            return implode("\n", $lines);
+        }
+
+        // 2. Specific Query: Provider Performance Matrix
+        if (str_contains($q, 'مهن') || str_contains($q, 'أداء') || str_contains($q, 'فني') || str_contains($q, 'إنذار') || str_contains($q, 'متابع')) {
+            $lines = [];
+            $lines[] = "### 🛠️ تحليل مصفوفة أداء مقدمي الخدمات:";
+            
+            $stars = $data['provider_performance']['top_performers'];
+            if (!empty($stars)) {
+                $lines[] = "\n⭐ **أصحاب الأداء المتميز (الموصى بتمييزهم):**";
+                foreach (array_slice($stars, 0, 3) as $s) {
+                    $lines[] = "- **{$s['name']}** ({$s['profession']}): تقييم {$s['avg_rating']}★، إنجاز {$s['completed_jobs']} عمل بنسبة نجاح {$s['completion_rate']}%. الإجراء: {$s['admin_action']}";
+                }
+            }
+
+            $watchlist = $data['provider_performance']['needs_attention'];
+            if (!empty($watchlist)) {
+                $lines[] = "\n⚠️ **قائمة المتابعة والتدقيق الإداري (يحتاجون متابعة):**";
+                foreach (array_slice($watchlist, 0, 3) as $w) {
+                    $lines[] = "- **{$w['name']}** ({$w['profession']}): نسبة الرفض/الإلغاء ({$w['rejection_rate']}%)، الشكاوى ({$w['complaints_count']}). الإجراء: {$w['admin_action']}";
+                }
+                $lines[] = "\n💡 **القرار الإداري المقترح:** توجيه إشعارات إدارية رسمية للمهنيين المتعثرين مع منح أولوية الظهور والإسناد للمتميزين.";
+            }
+            return implode("\n", $lines);
+        }
+
+        // 3. Specific Query: Service Demand Trends
+        if (str_contains($q, 'خدم') || str_contains($q, 'طلب') || str_contains($q, 'تخصص') || str_contains($q, 'أكثر') || str_contains($q, 'أقل')) {
+            $lines = [];
+            $lines[] = "### 📈 تحليل الطلب على الخدمات والتخصصات الشاغرة:";
+            
+            $most = $data['service_demand']['most_demanded'];
+            if (!empty($most)) {
+                $lines[] = "\n🔥 **الخدمات الأكثر طلباً:**";
+                foreach (array_slice($most, 0, 4) as $m) {
+                    $lines[] = "- **{$m['name_ar']}** ({$m['category_name']}): {$m['requests_count']} طلب ({$m['market_share_percent']}% من إجمالي الطلبات)، مع {$m['active_providers_count']} فني متاح.";
+                }
+            }
+
+            $deficits = $data['service_demand']['specialization_deficit'];
+            if (!empty($deficits)) {
+                $lines[] = "\n⚠️ **تخصصات تشهد عجزاً في الفنيين:**";
+                foreach ($deficits as $d) {
+                    $lines[] = "- **{$d['name_ar']}:** {$d['recommendation']}";
+                }
+                $lines[] = "\n💡 **القرار الإداري المقترح:** توجيه إعلانات المنصة لضم مزودي خدمات في تخصصات العجز لتفادي خسارة الطلبات.";
+            }
+            return implode("\n", $lines);
+        }
+
+        // 4. Specific Query: Complaints & Quality Hotspots
+        if (str_contains($q, 'شكا') || str_contains($q, 'جود') || str_contains($q, 'نزاع') || str_contains($q, 'مشكل')) {
+            $lines = [];
+            $lines[] = "### 🚨 رادار الشكاوى وبؤر الاحتكاك التشغيلي:";
+            $lines[] = "- **إجمالي الشكاوى:** {$kpis['total_complaints']} شكوى (مفتوحة: {$kpis['open_complaints']}، نسبة الحل: {$kpis['complaint_resolution_rate']}%)\n";
+
+            if (!empty($data['complaints_hotspots']['hotspots_by_service'])) {
+                $lines[] = "📌 **الخدمات الأكثر إثارة للشكاوى:**";
+                foreach ($data['complaints_hotspots']['hotspots_by_service'] as $hs) {
+                    $lines[] = "- **{$hs['service_name']}:** {$hs['complaints_count']} شكوى مسجلة.";
+                }
+            }
+
+            if (!empty($data['complaints_hotspots']['hotspots_by_location'])) {
+                $lines[] = "\n📌 **المناطق الأكثر تسجيلاً للشكاوى:**";
+                foreach ($data['complaints_hotspots']['hotspots_by_location'] as $hl) {
+                    $lines[] = "- **{$hl['location_name']}:** {$hl['complaints_count']} شكوى.";
+                }
+            }
+
+            $lines[] = "\n💡 **القرار الإداري المقترح:** إعادة تدقيق معايير التسعير ومواصفات التنفيذ للخدمات الأكثر شكوى، وتعيين وسيط إداري للبت في الشكاوى المفتوحة.";
+            return implode("\n", $lines);
+        }
+
+        // Default: Full Executive Synthesis
         $lines = [];
-        $lines[] = "### 📌 التقرير التحليلي الإداري الذكي";
-        $lines[] = "- **إجمالي الطلبات:** {$kpis['total_requests']} طلب (مكتملة: {$kpis['completed_requests']} بنسبة {$kpis['completion_rate']}%)";
-        $lines[] = "- **مقدمو الخدمات:** {$kpis['total_providers']} مسجلون ({$kpis['verified_providers']} موثقون، {$kpis['available_providers']} متاحون)";
+        $lines[] = "### 📌 التقرير التنفيذي الشامل لدعم اتخاذ القرار:";
+        $lines[] = "- **حركة الطلبات:** {$kpis['total_requests']} طلب إجمالي (مكتملة: {$kpis['completed_requests']} بنسبة {$kpis['completion_rate']}%، معلقة: {$kpis['pending_requests']}).";
+        $lines[] = "- **قاعدة المهنيين:** {$kpis['total_providers']} مسجلون ({$kpis['verified_providers']} معتمدون وموثقون).";
+        $lines[] = "- **الشكاوى والجودة:** {$kpis['open_complaints']} شكاوى مفتوحة، متوسط التقييم العام: {$kpis['average_rating']}/5.0.";
+        $lines[] = "- **المالية والعمولات:** إجمالي الإيرادات المحققة " . number_format($kpis['total_revenue']) . " ريال، وعمولة المنصة " . number_format($kpis['platform_commission']) . " ريال.\n";
+
+        $lines[] = "### ⚠️ أبرز الأولويات التشغيلية الموصى بها:";
+        foreach (array_slice($data['ai_recommendations'], 0, 3) as $i => $rec) {
+            $num = $i + 1;
+            $lines[] = "{$num}. **{$rec['title']}:** {$rec['recommendation']}";
+        }
+
+        return implode("\n", $lines);
+    }
         $lines[] = "- **الشكاوى المفتوحة:** {$kpis['open_complaints']} شكوى (نسبة الحل: {$kpis['complaint_resolution_rate']}%)";
         $lines[] = "- **الإيرادات الإجمالية:** " . number_format($kpis['total_revenue']) . " ريال (العمولات: " . number_format($kpis['platform_commission']) . " ريال)\n";
 
