@@ -649,7 +649,8 @@ class AdminDecisionSupportService
                 ['role' => 'user', 'content' => $userPrompt],
             ], [
                 'temperature' => 0.2,
-                'max_tokens' => 1200,
+                'max_tokens' => 800,
+                'timeout' => 5,
             ]);
 
             // If the provider fell back to basic local rule-based service (which is customer-oriented),
