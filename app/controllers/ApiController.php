@@ -1984,7 +1984,12 @@ class ApiController extends Controller
             $targetPath = $uploadDir . '/' . $fileName;
 
             if (file_put_contents($targetPath, $decoded)) {
-                return url('/public/uploads/certificates/' . $fileName);
+                $relPath = '/public/uploads/certificates/' . $fileName;
+                $appUrl = getenv('APP_URL') ?: (defined('APP_URL') ? APP_URL : '');
+                if (!empty($appUrl) && !str_contains($appUrl, 'localhost')) {
+                    return rtrim($appUrl, '/') . $relPath;
+                }
+                return $relPath;
             }
         } catch (Throwable $e) {
             error_log('Failed saving certificate image: ' . $e->getMessage());

@@ -27,9 +27,9 @@ WORKDIR /var/www/html
 COPY . /var/www/html
 
 # Permissions
-RUN mkdir -p /var/www/html/storage/cache /var/www/html/storage/logs /var/www/html/storage/uploads \
-    && chown -R www-data:www-data /var/www/html/storage \
-    && chmod -R 775 /var/www/html/storage
+RUN mkdir -p /var/www/html/storage/cache /var/www/html/storage/logs /var/www/html/storage/uploads /var/www/html/public/uploads/certificates \
+    && chown -R www-data:www-data /var/www/html/storage /var/www/html/public/uploads \
+    && chmod -R 775 /var/www/html/storage /var/www/html/public/uploads
 
 EXPOSE 80
 

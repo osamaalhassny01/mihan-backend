@@ -14,10 +14,10 @@ a2enmod mpm_prefork 2>/dev/null || true
 sed -i "s/Listen [0-9]*/Listen ${PORT}/g" /etc/apache2/ports.conf 2>/dev/null || true
 sed -i "s/<VirtualHost \*:[^>]*>/<VirtualHost \*:${PORT}>/g" /etc/apache2/sites-available/000-default.conf 2>/dev/null || true
 
-# Ensure storage directories exist and are writable
-mkdir -p /var/www/html/storage/cache /var/www/html/storage/logs /var/www/html/storage/uploads
-chown -R www-data:www-data /var/www/html/storage
-chmod -R 775 /var/www/html/storage
+# Ensure storage and upload directories exist and are writable
+mkdir -p /var/www/html/storage/cache /var/www/html/storage/logs /var/www/html/storage/uploads /var/www/html/public/uploads/certificates
+chown -R www-data:www-data /var/www/html/storage /var/www/html/public/uploads
+chmod -R 775 /var/www/html/storage /var/www/html/public/uploads
 
 # Run database auto-migration if MySQL environment variables are available
 if [ -n "$DB_HOST" ] || [ -n "$MYSQLHOST" ] || [ -n "$DATABASE_URL" ] || [ -n "$MYSQL_URL" ]; then
