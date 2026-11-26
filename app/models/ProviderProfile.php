@@ -81,8 +81,20 @@ class ProviderProfile extends Model
             $params['category_id'] = $filters['category_id'];
         }
         if (!empty($filters['service_id'])) {
-            $sql .= " AND pp.id IN (SELECT provider_id FROM provider_services WHERE service_id = :service_id)";
+            $sql .= " AND (
+                pp.id IN (SELECT provider_id FROM provider_services WHERE service_id = :service_id)
+                OR EXISTS (
+                    SELECT 1 FROM services s
+                    WHERE s.id = :service_id_prof
+                      AND (
+                          TRIM(s.name_ar) = TRIM(pp.profession)
+                          OR TRIM(pp.profession) LIKE CONCAT('%', TRIM(s.name_ar), '%')
+                          OR TRIM(s.name_ar) LIKE CONCAT('%', TRIM(pp.profession), '%')
+                      )
+                )
+            )";
             $params['service_id'] = $filters['service_id'];
+            $params['service_id_prof'] = $filters['service_id'];
         }
         if (!empty($filters['location_id'])) {
             require_once __DIR__ . '/Location.php';

@@ -30,13 +30,20 @@ class RecommendationEngine
      */
     public function recommend(int $serviceId, ?int $locationId, int $limit = 10, ?string $preferredDate = null, ?string $preferredTime = null): array
     {
-        $sql = "SELECT pp.*, u.name, u.profile_photo
+        $sql = "SELECT DISTINCT pp.*, u.name, u.profile_photo
                 FROM provider_profiles pp
                 JOIN users u ON u.id = pp.user_id
-                JOIN provider_services ps ON ps.provider_id = pp.id AND ps.service_id = :service_id
-                WHERE u.is_active = 1 AND pp.is_verified = 1";
+                LEFT JOIN provider_services ps ON ps.provider_id = pp.id
+                LEFT JOIN services s ON s.id = :service_id_prof
+                WHERE u.is_active = 1 AND pp.is_verified = 1
+                  AND (
+                      ps.service_id = :service_id
+                      OR TRIM(s.name_ar) = TRIM(pp.profession)
+                      OR TRIM(pp.profession) LIKE CONCAT('%', TRIM(s.name_ar), '%')
+                      OR TRIM(s.name_ar) LIKE CONCAT('%', TRIM(pp.profession), '%')
+                  )";
         $stmt = $this->db->prepare($sql);
-        $stmt->execute(['service_id' => $serviceId]);
+        $stmt->execute(['service_id' => $serviceId, 'service_id_prof' => $serviceId]);
         $candidates = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         $results = [];

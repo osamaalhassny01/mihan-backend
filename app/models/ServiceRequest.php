@@ -116,10 +116,26 @@ class ServiceRequest extends Model
         if ($serviceId > 0) {
             $stmt = $this->db->prepare("SELECT 1 FROM provider_services WHERE provider_id = :p AND service_id = :s LIMIT 1");
             $stmt->execute(['p' => $providerId, 's' => $serviceId]);
-            if (!$stmt->fetchColumn()) {
-                require_once __DIR__ . '/Service.php';
-                $svc = (new Service())->find($serviceId);
-                $serviceName = $svc['name_ar'] ?? 'الخدمة المطلوبة';
+            $hasService = (bool)$stmt->fetchColumn();
+
+            require_once __DIR__ . '/Service.php';
+            $svc = (new Service())->find($serviceId);
+            $serviceName = $svc['name_ar'] ?? 'الخدمة المطلوبة';
+
+            // Also check if provider's profession text matches this service
+            if (!$hasService && !empty($serviceName) && !empty($profession)) {
+                $normProf = trim($profession);
+                $normSvc = trim($serviceName);
+                if ($normProf === $normSvc || mb_strpos($normProf, $normSvc) !== false || mb_strpos($normSvc, $normProf) !== false) {
+                    $hasService = true;
+                    try {
+                        $this->db->prepare("INSERT IGNORE INTO provider_services (provider_id, service_id) VALUES (:p, :s)")
+                             ->execute(['p' => $providerId, 's' => $serviceId]);
+                    } catch (\Throwable $e) {}
+                }
+            }
+
+            if (!$hasService) {
                 return [
                     'eligible' => false,
                     'reason_code' => 'service_mismatch',

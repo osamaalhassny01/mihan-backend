@@ -328,14 +328,30 @@ class ApiController extends Controller
 
         $providerProfile = null;
         if ($role === 'provider') {
+            $professionText = trim((string)($data['profession'] ?? 'مقدم خدمة فنية'));
             $profId = (new ProviderProfile())->insert([
                 'user_id'          => $userId,
-                'profession'       => (string)($data['profession'] ?? 'مقدم خدمة فنية'),
+                'profession'       => $professionText,
                 'experience_years' => (int)($data['experience_years'] ?? 0),
                 'is_verified'      => 0,
                 'is_available'     => settingBool('auto_provider_available', true) ? 1 : 0,
             ]);
             $providerProfile = (new ProviderProfile())->find($profId);
+
+            // Auto-link matching service into provider_services
+            $db = Database::getInstance();
+            $svcId = !empty($data['service_id']) ? (int)$data['service_id'] : 0;
+            if ($svcId <= 0 && !empty($professionText)) {
+                $matchedSvc = $db->prepare("SELECT id FROM services WHERE TRIM(name_ar) = :p OR :p2 LIKE CONCAT('%', TRIM(name_ar), '%') LIMIT 1");
+                $matchedSvc->execute(['p' => $professionText, 'p2' => $professionText]);
+                $svcId = (int)$matchedSvc->fetchColumn();
+            }
+            if ($svcId > 0) {
+                try {
+                    $db->prepare("INSERT IGNORE INTO provider_services (provider_id, service_id) VALUES (:p, :s)")
+                       ->execute(['p' => $profId, 's' => $svcId]);
+                } catch (\Throwable $e) {}
+            }
         }
 
         if (class_exists('RateLimiter')) RateLimiter::hit($throttleKey, 3600);
