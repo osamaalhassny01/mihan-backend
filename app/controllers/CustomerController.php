@@ -246,7 +246,8 @@ class CustomerController extends Controller
         $requestedProviderId = (int)($this->input('provider_id') ?: 0);
         if ($requestedProviderId > 0) {
             $freshRequest = $reqModel->find($id);
-            if ($reqModel->providerEligibleForRequest($requestedProviderId, $freshRequest)) {
+            $eligibility = $reqModel->checkProviderEligibility($requestedProviderId, $freshRequest);
+            if ($eligibility['eligible']) {
                 $providerModel = new ProviderProfile();
                 $provider = $providerModel->find($requestedProviderId);
                 if ($provider && $reqModel->assignProvider($id, Auth::id(), $requestedProviderId)) {
@@ -255,6 +256,8 @@ class CustomerController extends Controller
                     $this->redirect('/customer/requests');
                     return;
                 }
+            } else {
+                Session::flash('warning', $eligibility['message']);
             }
             // Not eligible (e.g. doesn't cover that service/area) — fall back
             // to the normal ranked-recommendations flow below instead of failing.
@@ -294,8 +297,9 @@ class CustomerController extends Controller
             return;
         }
 
-        if ($providerId <= 0 || !$reqModel->providerEligibleForRequest($providerId, $request)) {
-            Session::flash('error', 'مقدم الخدمة المختار غير مؤهل لتنفيذ هذه الخدمة أو لا يغطي موقعها');
+        $eligibility = $reqModel->checkProviderEligibility($providerId, $request);
+        if (!$eligibility['eligible']) {
+            Session::flash('error', $eligibility['message']);
             $this->redirect('/customer/requests/' . $id . '/recommendations');
             return;
         }

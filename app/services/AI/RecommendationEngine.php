@@ -34,7 +34,7 @@ class RecommendationEngine
                 FROM provider_profiles pp
                 JOIN users u ON u.id = pp.user_id
                 JOIN provider_services ps ON ps.provider_id = pp.id AND ps.service_id = :service_id
-                WHERE u.is_active = 1";
+                WHERE u.is_active = 1 AND pp.is_verified = 1";
         $stmt = $this->db->prepare($sql);
         $stmt->execute(['service_id' => $serviceId]);
         $candidates = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -57,12 +57,12 @@ class RecommendationEngine
         // 1. Service Match: provider already filtered to offer this service => full weight
         $serviceMatch = self::W_SERVICE;
 
-        // 2. Location Match
+        // 2. Location Match (Hierarchical coverage: governorate <-> districts)
         $locationMatch = 0;
         if ($locationId) {
-            $stmt = $this->db->prepare("SELECT COUNT(*) c FROM provider_locations WHERE provider_id = :p AND location_id = :l");
-            $stmt->execute(['p' => $provider['id'], 'l' => $locationId]);
-            $locationMatch = ((int)$stmt->fetch()['c'] > 0) ? self::W_LOCATION : self::W_LOCATION * 0.3;
+            require_once __DIR__ . '/../../models/Location.php';
+            $covers = (new \Location())->providerCoversLocation((int)$provider['id'], $locationId);
+            $locationMatch = $covers ? self::W_LOCATION : self::W_LOCATION * 0.2;
         } else {
             $locationMatch = self::W_LOCATION * 0.5; // neutral if customer gave no location
         }

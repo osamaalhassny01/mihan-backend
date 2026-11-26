@@ -85,8 +85,12 @@ class ProviderProfile extends Model
             $params['service_id'] = $filters['service_id'];
         }
         if (!empty($filters['location_id'])) {
-            $sql .= " AND pp.id IN (SELECT provider_id FROM provider_locations WHERE location_id = :location_id)";
-            $params['location_id'] = $filters['location_id'];
+            require_once __DIR__ . '/Location.php';
+            $covIds = (new Location())->getCoverageLocationIds((int)$filters['location_id']);
+            if (!empty($covIds)) {
+                $covList = implode(',', array_map('intval', $covIds));
+                $sql .= " AND pp.id IN (SELECT provider_id FROM provider_locations WHERE location_id IN ({$covList}))";
+            }
         }
         if (!empty($filters['min_rating'])) {
             $sql .= " AND pp.avg_rating >= :min_rating";

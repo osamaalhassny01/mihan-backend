@@ -590,8 +590,14 @@ class ApiController extends Controller
         }
         $reqModel = new ServiceRequest();
         $providerId = !empty($data['provider_id']) ? (int)$data['provider_id'] : null;
-        if ($providerId !== null && !$reqModel->providerEligibleForRequest($providerId, $data + ['service_id' => $serviceId])) {
-            $this->error('مقدم الخدمة غير معتمد أو غير متاح للخدمة والمنطقة والموعد المحدد', 422);
+        if ($providerId !== null) {
+            $eligibility = $reqModel->checkProviderEligibility($providerId, $data + ['service_id' => $serviceId]);
+            if (!$eligibility['eligible']) {
+                $this->error($eligibility['message'], 422, [
+                    'reason_code' => $eligibility['reason_code'] ?? 'ineligible',
+                    'details' => $eligibility['details'] ?? null,
+                ]);
+            }
         }
 
         $requestId = $reqModel->createRequest([
@@ -1235,9 +1241,25 @@ class ApiController extends Controller
         // Fetch eligible verified providers for this request
         $serviceId = (int)$request['service_id'];
         $db = Database::getInstance();
+        $reqLocId = !empty($request['location_id']) ? (int)$request['location_id'] : 0;
+        $covSelect = "0 AS covers_location";
+        $orderCov = "";
+        if ($reqLocId > 0) {
+            $covSelect = "(CASE WHEN EXISTS (
+                SELECT 1 FROM provider_locations pl
+                LEFT JOIN locations pl_l ON pl_l.id = pl.location_id
+                WHERE pl.provider_id = pp.id AND (
+                    pl.location_id = {$reqLocId}
+                    OR pl.location_id = (SELECT parent_id FROM locations WHERE id = {$reqLocId})
+                    OR pl_l.parent_id = {$reqLocId}
+                )
+            ) THEN 1 ELSE 0 END) AS covers_location";
+            $orderCov = "covers_location DESC, ";
+        }
+
         $sql = "SELECT pp.id as provider_id, u.id as user_id, u.name as name, u.phone as phone,
                        pp.profession as profession, pp.avg_rating as avg_rating, pp.is_verified,
-                       pp.experience_years
+                       pp.experience_years, {$covSelect}
                 FROM provider_profiles pp
                 JOIN users u ON u.id = pp.user_id
                 JOIN provider_services ps ON ps.provider_id = pp.id
@@ -1245,7 +1267,7 @@ class ApiController extends Controller
                   AND u.role = 'provider'
                   AND u.is_active = 1
                   AND pp.is_verified = 1
-                ORDER BY pp.avg_rating DESC, pp.experience_years DESC";
+                ORDER BY {$orderCov}pp.avg_rating DESC, pp.experience_years DESC";
         $stmt = $db->prepare($sql);
         $stmt->execute(['service_id' => $serviceId]);
         $providers = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -1253,11 +1275,11 @@ class ApiController extends Controller
         if (empty($providers)) {
             $providers = $db->query("SELECT pp.id as provider_id, u.id as user_id, u.name as name, u.phone as phone,
                                             pp.profession as profession, pp.avg_rating as avg_rating, pp.is_verified,
-                                            pp.experience_years
+                                            pp.experience_years, {$covSelect}
                                      FROM provider_profiles pp
                                      JOIN users u ON u.id = pp.user_id
                                      WHERE u.role = 'provider' AND u.is_active = 1 AND pp.is_verified = 1
-                                     ORDER BY pp.avg_rating DESC LIMIT 20")->fetchAll(PDO::FETCH_ASSOC);
+                                     ORDER BY {$orderCov}pp.avg_rating DESC LIMIT 20")->fetchAll(PDO::FETCH_ASSOC);
         }
 
         $this->json([

@@ -46,8 +46,19 @@ class FcmService
                   AND ps.service_id = :service_id";
         $params = ['service_id' => $serviceId];
         if ($locationId !== null && $locationId > 0) {
-            $sql .= " AND EXISTS (SELECT 1 FROM provider_locations pl WHERE pl.provider_id = pp.id AND pl.location_id = :location_id)";
+            $sql .= " AND EXISTS (
+                SELECT 1 FROM provider_locations pl 
+                LEFT JOIN locations pl_l ON pl_l.id = pl.location_id
+                WHERE pl.provider_id = pp.id 
+                  AND (
+                      pl.location_id = :location_id
+                      OR pl.location_id = (SELECT parent_id FROM locations WHERE id = :location_id_p)
+                      OR pl_l.parent_id = :location_id_c
+                  )
+            )";
             $params['location_id'] = $locationId;
+            $params['location_id_p'] = $locationId;
+            $params['location_id_c'] = $locationId;
         }
         if (!empty($data['request_id'])) {
             $sql .= " AND NOT EXISTS (SELECT 1 FROM provider_rejections pr WHERE pr.provider_id = pp.id AND pr.request_id = :request_id)";

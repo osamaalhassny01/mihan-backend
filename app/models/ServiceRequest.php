@@ -55,40 +55,165 @@ class ServiceRequest extends Model
     }
 
     /**
-     * Verify that a provider is an active provider who offers the requested
-     * service and, when a request has a location, serves that location.
+     * Check provider eligibility with granular diagnostic reasons and human-readable Arabic messages.
+     * Separates reasons clearly:
+     * - not_found_or_inactive
+     * - not_verified (account awaiting admin vetting/approval)
+     * - service_mismatch (provider does not offer this service)
+     * - location_mismatch (provider does not cover this location directly or hierarchically)
+     * - unavailable (master is_available toggle is off)
+     * - schedule_conflict (outside weekly working hours)
+     */
+    public function checkProviderEligibility(int $providerId, array $request): array
+    {
+        if ($providerId <= 0) {
+            return [
+                'eligible' => false,
+                'reason_code' => 'invalid_provider',
+                'message' => 'لم يتم تحديد مقدم خدمة صالح.',
+                'details' => ['provider_id' => $providerId],
+            ];
+        }
+
+        // 1. Account existence, active status and role
+        $sql = "SELECT pp.*, u.name as user_name, u.phone as user_phone, u.is_active as user_active, u.role as user_role
+                FROM provider_profiles pp
+                JOIN users u ON u.id = pp.user_id
+                WHERE pp.id = :provider_id
+                LIMIT 1";
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute(['provider_id' => $providerId]);
+        $provider = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$provider || (int)$provider['user_active'] !== 1 || $provider['user_role'] !== 'provider') {
+            return [
+                'eligible' => false,
+                'reason_code' => 'not_found_or_inactive',
+                'message' => 'حساب مقدم الخدمة غير موجود أو غير نشط في المنصة حالياً.',
+                'details' => ['provider_id' => $providerId],
+            ];
+        }
+
+        $providerName = trim((string)($provider['user_name'] ?? 'مقدم الخدمة'));
+        $profession = trim((string)($provider['profession'] ?? ($provider['specialization'] ?? 'المهنة')));
+
+        // 2. Official administrative verification (is_verified)
+        if ((int)($provider['is_verified'] ?? 0) !== 1) {
+            return [
+                'eligible' => false,
+                'reason_code' => 'not_verified',
+                'message' => "مقدم الخدمة ({$providerName}) لا يزال بانتظار الاعتماد والتوثيق الرسمي من إدارة المنصة، ولا يمكنه استقبال طلبات جديدة حتى اكتمال تفعيل حسابه.",
+                'details' => [
+                    'provider_id' => $providerId,
+                    'provider_name' => $providerName,
+                    'is_verified' => 0,
+                ],
+            ];
+        }
+
+        // 3. Service specialty matching
+        $serviceId = (int)($request['service_id'] ?? 0);
+        if ($serviceId > 0) {
+            $stmt = $this->db->prepare("SELECT 1 FROM provider_services WHERE provider_id = :p AND service_id = :s LIMIT 1");
+            $stmt->execute(['p' => $providerId, 's' => $serviceId]);
+            if (!$stmt->fetchColumn()) {
+                require_once __DIR__ . '/Service.php';
+                $svc = (new Service())->find($serviceId);
+                $serviceName = $svc['name_ar'] ?? 'الخدمة المطلوبة';
+                return [
+                    'eligible' => false,
+                    'reason_code' => 'service_mismatch',
+                    'message' => "مقدم الخدمة ({$providerName}) غير مسجل لتقديم خدمة ({$serviceName}) ضمن قائمة تخصصاته المعتمدة (تخصصه الحالي: {$profession}).",
+                    'details' => [
+                        'provider_id' => $providerId,
+                        'service_id' => $serviceId,
+                        'service_name' => $serviceName,
+                        'profession' => $profession,
+                    ],
+                ];
+            }
+        }
+
+        // 4. Geographic coverage matching (Hierarchical via Location model)
+        $locationId = !empty($request['location_id']) ? (int)$request['location_id'] : null;
+        if ($locationId !== null && $locationId > 0) {
+            require_once __DIR__ . '/Location.php';
+            $locModel = new Location();
+            if (!$locModel->providerCoversLocation($providerId, $locationId)) {
+                $reqLoc = $locModel->find($locationId);
+                $reqLocName = $reqLoc['name_ar'] ?? 'المنطقة المحددة';
+
+                $coveredLocs = $this->query(
+                    "SELECT l.name_ar FROM provider_locations pl JOIN locations l ON l.id = pl.location_id WHERE pl.provider_id = :p",
+                    ['p' => $providerId]
+                );
+                $coveredNames = !empty($coveredLocs) ? implode('، ', array_column($coveredLocs, 'name_ar')) : 'لم يحدد مناطق تغطية بعد';
+
+                return [
+                    'eligible' => false,
+                    'reason_code' => 'location_mismatch',
+                    'message' => "مقدم الخدمة ({$providerName}) لا يغطي منطقة ({$reqLocName}). نطاق تغطيته الحالي هو: ({$coveredNames}).",
+                    'details' => [
+                        'provider_id' => $providerId,
+                        'location_id' => $locationId,
+                        'location_name' => $reqLocName,
+                        'covered_locations' => $coveredNames,
+                    ],
+                ];
+            }
+        }
+
+        // 5. Master availability toggle
+        if ((int)($provider['is_available'] ?? 0) !== 1) {
+            return [
+                'eligible' => false,
+                'reason_code' => 'unavailable',
+                'message' => "مقدم الخدمة ({$providerName}) مضبوط حالياً في وضع 'غير متاح' لاستقبال طلبات مؤقتاً.",
+                'details' => [
+                    'provider_id' => $providerId,
+                    'is_available' => 0,
+                ],
+            ];
+        }
+
+        // 6. Scheduled working hours availability
+        require_once __DIR__ . '/ProviderProfile.php';
+        $prefDate = $request['preferred_date'] ?? null;
+        $prefTime = $request['preferred_time'] ?? null;
+        $scheduled = (new ProviderProfile())->scheduledAvailability($providerId, $prefDate, $prefTime);
+        if ($scheduled === false) {
+            $timeSlot = trim(($prefDate ?? '') . ' ' . ($prefTime ?? ''));
+            return [
+                'eligible' => false,
+                'reason_code' => 'schedule_conflict',
+                'message' => "مقدم الخدمة ({$providerName}) غير متاح في الموعد المطلوب ({$timeSlot}) وفق جدول ساعات عمله المعتمدة.",
+                'details' => [
+                    'provider_id' => $providerId,
+                    'preferred_date' => $prefDate,
+                    'preferred_time' => $prefTime,
+                ],
+            ];
+        }
+
+        return [
+            'eligible' => true,
+            'reason_code' => 'eligible',
+            'message' => "مقدم الخدمة ({$providerName}) مؤهل ومتاح لتنفيذ الطلب.",
+            'details' => [
+                'provider_id' => $providerId,
+                'provider_name' => $providerName,
+            ],
+        ];
+    }
+
+    /**
+     * Verify that a provider is eligible for the request.
+     * Backward-compatible boolean wrapper around checkProviderEligibility.
      */
     public function providerEligibleForRequest(int $providerId, array $request): bool
     {
-        $sql = "SELECT pp.id
-                FROM provider_profiles pp
-                JOIN users u ON u.id = pp.user_id
-                JOIN provider_services ps ON ps.provider_id = pp.id
-                WHERE pp.id = :provider_id
-                  AND u.role = 'provider'
-                  AND u.is_active = 1
-                  AND pp.is_verified = 1
-                  AND ps.service_id = :service_id
-                  AND (
-                        :location_id IS NULL
-                        OR EXISTS (
-                            SELECT 1 FROM provider_locations pl
-                            WHERE pl.provider_id = pp.id
-                              AND pl.location_id = :location_id_2
-                        )
-                  )
-                LIMIT 1";
-        $stmt = $this->db->prepare($sql);
-        $locationId = !empty($request['location_id']) ? (int)$request['location_id'] : null;
-        $stmt->bindValue(':provider_id', $providerId, PDO::PARAM_INT);
-        $stmt->bindValue(':service_id', (int)$request['service_id'], PDO::PARAM_INT);
-        $stmt->bindValue(':location_id', $locationId, $locationId === null ? PDO::PARAM_NULL : PDO::PARAM_INT);
-        $stmt->bindValue(':location_id_2', $locationId, $locationId === null ? PDO::PARAM_NULL : PDO::PARAM_INT);
-        $stmt->execute();
-        if (!$stmt->fetch()) return false;
-
-        require_once __DIR__ . '/ProviderProfile.php';
-        return (new ProviderProfile())->availableForRequest($providerId, $request);
+        $res = $this->checkProviderEligibility($providerId, $request);
+        return (bool)($res['eligible'] ?? false);
     }
 
     /**
@@ -425,7 +550,14 @@ class ServiceRequest extends Model
                         sr.location_id IS NULL
                         OR EXISTS (
                             SELECT 1 FROM provider_locations pl 
-                            WHERE pl.provider_id = :id3 AND pl.location_id = sr.location_id
+                            LEFT JOIN locations req_l ON req_l.id = sr.location_id
+                            LEFT JOIN locations pl_l ON pl_l.id = pl.location_id
+                            WHERE pl.provider_id = :id3 
+                              AND (
+                                  pl.location_id = sr.location_id
+                                  OR pl.location_id = req_l.parent_id
+                                  OR pl_l.parent_id = sr.location_id
+                              )
                         )
                     )
                     AND NOT EXISTS (
